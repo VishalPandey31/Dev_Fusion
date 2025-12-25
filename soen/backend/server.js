@@ -82,19 +82,33 @@ io.use(async (socket, next) => {
 
 
         socket.user = decoded;
-
         next();
     } catch (error) {
         next(error);
     }
 })
 
-io.on('connection', socket => {
+import sessionModel from './models/session.model.js';
+
+io.on('connection', async socket => {
     socket.roomId = socket.project._id.toString();
 
     console.log('a user connected');
 
     socket.join(socket.roomId);
+
+    // START SESSION
+    let sessionId = null;
+    try {
+        const session = await sessionModel.create({
+            projectId: socket.project._id,
+            userId: socket.user._id || socket.user.id || socket.user._id, // Handle potential JWT payload variations
+            loginTime: new Date()
+        });
+        sessionId = session._id;
+    } catch (err) {
+        console.error("Failed to create session:", err);
+    }
 
     socket.on('project-message', async data => {
         const message = data.message;
@@ -156,9 +170,26 @@ io.on('connection', socket => {
 
     });
 
-    socket.on('disconnect', () => {
+    socket.on('disconnect', async () => {
         console.log('user disconnected');
         socket.leave(socket.roomId);
+
+        // END SESSION
+        if (sessionId) {
+            try {
+                const logoutTime = new Date();
+                const session = await sessionModel.findById(sessionId);
+                if (session) {
+                    const durationInSeconds = (logoutTime - session.loginTime) / 1000;
+                    await sessionModel.findByIdAndUpdate(sessionId, {
+                        logoutTime: logoutTime,
+                        duration: durationInSeconds
+                    });
+                }
+            } catch (err) {
+                console.error("Failed to update session on disconnect:", err);
+            }
+        }
     });
 });
 

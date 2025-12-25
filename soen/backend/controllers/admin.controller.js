@@ -49,7 +49,7 @@ export const registerAdminController = async (req, res) => {
             password: hashedPassword,
             isAdmin: true,
             isApproved: true,
-            isVerifiedAdmin: false, // STRICTLY FALSE until manual verification
+            isVerifiedAdmin: true, // AUTO-VERIFIED because Secret Code was correct
             adminPin: hashedPin,
             identityProof: identityProofFile.path
         });
@@ -62,11 +62,11 @@ export const registerAdminController = async (req, res) => {
         // I will log a message for the user to know how to verify.
 
         if (adminCount === 0) {
-            console.log("FIRST ADMIN REGISTERED. To verify, run: node verify-admin.js " + user.email);
+            console.log("FIRST ADMIN REGISTERED. Account Auto-Verified via Secret Code.");
         }
 
         res.status(201).json({
-            message: 'Admin registered successfully. Account is PENDING IDENTITY VERIFICATION. You cannot log in until approved.',
+            message: 'Admin registered successfully. Access Granted (Auto-Verified).',
             userId: user._id
         });
 
