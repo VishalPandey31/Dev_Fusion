@@ -28,7 +28,9 @@ import {
     Minus,
     Shield,
     Check,
-    Trash2
+    Trash2,
+    Sun,
+    Moon
 } from 'lucide-react'
 import clsx from 'clsx'
 import 'highlight.js/styles/github-dark.css' // Ensure dark theme for code
@@ -105,6 +107,14 @@ const Project = () => {
         }
     }, [])
 
+    // Toast State
+    const [toast, setToast] = useState({ show: false, message: '', type: 'info' }) // type: 'info', 'error', 'success'
+
+    const showToast = (message, type = 'info') => {
+        setToast({ show: true, message, type })
+        setTimeout(() => setToast(prev => ({ ...prev, show: false })), 3000)
+    }
+
     const [webContainer, setWebContainer] = useState(null)
     const [iframeUrl, setIframeUrl] = useState(null)
     const [runProcess, setRunProcess] = useState(null)
@@ -135,10 +145,34 @@ const Project = () => {
             console.log(res.data)
             setIsModalOpen(false)
             setProject(res.data.project) // Update project state to show new users immediately
+            showToast("Collaborators added successfully!", "success")
         }).catch(err => {
             console.log(err)
+            showToast("Failed to add collaborators", "error")
         })
     }
+
+    // THEME SWITCHER
+    const [isDarkMode, setIsDarkMode] = useState(true);
+
+    const toggleTheme = () => {
+        setIsDarkMode(prev => !prev);
+    }
+
+    const themeClasses = {
+        main: isDarkMode ? "bg-slate-900 text-white" : "bg-gray-100 text-slate-800",
+        panel: isDarkMode ? "bg-slate-900 border-slate-700" : "bg-white border-gray-200",
+        secondaryPanel: isDarkMode ? "bg-slate-800 border-slate-700" : "bg-gray-50 border-gray-200",
+        header: isDarkMode ? "bg-slate-900 border-slate-700" : "bg-white border-gray-200 shadow-sm",
+        textPrimary: isDarkMode ? "text-white" : "text-slate-900",
+        textSecondary: isDarkMode ? "text-slate-400" : "text-slate-500",
+        border: isDarkMode ? "border-slate-700" : "border-gray-200",
+        hover: isDarkMode ? "hover:bg-slate-800" : "hover:bg-gray-100",
+        chatBubbleMy: isDarkMode ? "bg-slate-800 text-white" : "bg-white border border-gray-200 shadow-sm text-slate-800",
+        chatBubbleOther: isDarkMode ? "bg-slate-800 text-white" : "bg-white border border-gray-200 shadow-sm text-slate-800",
+        input: isDarkMode ? "bg-slate-900 border-slate-700 text-white" : "bg-white border-gray-300 text-slate-900 shadow-inner",
+        codeEditorConfig: isDarkMode ? "vs-dark" : "light"
+    };
 
     function removeUser(userId) {
         if (!confirm("Are you sure you want to remove this user?")) return;
@@ -149,9 +183,10 @@ const Project = () => {
         }).then(res => {
             console.log(res.data)
             setProject(res.data.project)
+            showToast("User removed successfully", "success")
         }).catch(err => {
             console.log(err)
-            alert("Failed to remove user: " + (err.response?.data?.error || err.message))
+            showToast("Failed to remove user: " + (err.response?.data?.error || err.message), "error")
         })
     }
 
@@ -488,7 +523,8 @@ const Project = () => {
                 </header>
 
                 {/* Chat Area */}
-                <div className="conversation-area flex-grow flex flex-col relative overflow-hidden bg-slate-950/30">
+                {/* Chat Area */}
+                <div className={clsx("conversation-area flex-grow flex flex-col relative overflow-hidden", isDarkMode ? "bg-slate-950/30" : "bg-gray-50/50")}>
                     <div
                         ref={messageBox}
                         className="message-box flex-grow flex flex-col gap-4 p-6 overflow-auto"
@@ -504,11 +540,11 @@ const Project = () => {
                                 )}
                             >
                                 <div className="flex items-baseline gap-2 mb-1 px-1 opacity-70">
-                                    <span className="text-xs text-slate-500 font-medium">
+                                    <span className="text-xs font-medium opacity-75">
                                         {msg.sender.email.split('@')[0]}
                                     </span>
                                     {msg.timestamp && (
-                                        <span className="text-[10px] text-slate-600">
+                                        <span className={clsx("text-[10px]", themeClasses.textSecondary)}>
                                             {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                         </span>
                                     )}
@@ -517,7 +553,7 @@ const Project = () => {
                                     "p-3 rounded-2xl shadow-sm text-sm leading-relaxed border my-1",
                                     msg.sender._id == user._id.toString()
                                         ? "bg-blue-600 text-white border-blue-500 rounded-tr-sm"
-                                        : "bg-slate-800 text-slate-200 border-slate-700 rounded-tl-sm",
+                                        : themeClasses.chatBubbleOther + " rounded-tl-sm",
                                     msg.sender._id === 'ai' && "w-full max-w-full !p-0 !bg-transparent !border-none !shadow-none" // AI message handles its own styles
                                 )}>
                                     {msg.sender._id === 'ai' ? (
@@ -531,22 +567,22 @@ const Project = () => {
 
                         {isAiThinking && (
                             <div className="flex flex-col max-w-[85%] self-start items-start">
-                                <span className="text-xs text-slate-500 mb-1 px-1">AI</span>
-                                <div className="bg-slate-800/50 text-slate-400 p-3 rounded-2xl rounded-tl-sm border border-slate-700/50 flex items-center gap-2">
+                                <span className={clsx("text-xs mb-1 px-1", themeClasses.textSecondary)}>AI</span>
+                                <div className={clsx("p-3 rounded-2xl rounded-tl-sm border flex items-center gap-2 italic text-sm", themeClasses.secondaryPanel, themeClasses.textSecondary)}>
                                     <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
-                                    <span className="text-sm italic">Thinking...</span>
+                                    <span>Thinking...</span>
                                 </div>
                             </div>
                         )}
                     </div>
 
                     {/* Input Area */}
-                    <div className="inputField flex items-center p-4 bg-slate-900 border-t border-slate-800 gap-3">
+                    <div className={clsx("inputField flex items-center p-4 border-t gap-3", themeClasses.panel, themeClasses.border)}>
                         <input
                             value={message}
                             onChange={(e) => setMessage(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && send()}
-                            className='flex-grow bg-slate-800 text-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 border border-slate-700 placeholder-slate-500 transition-all'
+                            className={clsx('flex-grow rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all shadow-sm', themeClasses.input)}
                             type="text"
                             placeholder='Ask AI to edit code...'
                         />
@@ -568,9 +604,9 @@ const Project = () => {
                             initial={{ x: '-100%' }}
                             animate={{ x: 0 }}
                             exit={{ x: '-100%' }}
-                            className="absolute inset-0 bg-slate-900 z-50 flex flex-col"
+                            className={clsx("absolute inset-0 z-50 flex flex-col", themeClasses.panel)}
                         >
-                            <header className='flex justify-between items-center px-6 py-4 border-b border-slate-800'>
+                            <header className={clsx('flex justify-between items-center px-6 py-4 border-b', themeClasses.border, isDarkMode ? "border-slate-800" : "")}>
                                 <h1 className='font-semibold text-lg'>Collaborators</h1>
                                 <button onClick={() => setIsSidePanelOpen(false)} className='p-2 hover:bg-slate-800 rounded-lg'>
                                     <X className="w-5 h-5" />
@@ -578,7 +614,7 @@ const Project = () => {
                             </header>
                             <div className="flex-col gap-2 p-4">
                                 {project.users && project.users.map(u => (
-                                    <div className="user cursor-pointer hover:bg-slate-800 p-3 rounded-lg flex gap-3 items-center transition-colors">
+                                    <div className={clsx("user cursor-pointer p-3 rounded-lg flex gap-3 items-center transition-colors", themeClasses.hover)}>
                                         <div className='w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center text-slate-300'>
                                             <Users className="w-5 h-5" />
                                         </div>
@@ -694,7 +730,7 @@ const Project = () => {
                                 onClick={() => {
                                     const selection = window.getSelection().toString();
                                     if (!selection) {
-                                        alert("Please select some code to explain first.");
+                                        showToast("Please select some code to explain first.", "error");
                                         return;
                                     }
                                     const prompt = `@ai Explain this code:\n\`\`\`javascript\n${selection}\n\`\`\``;
@@ -888,6 +924,7 @@ const Project = () => {
                                 // Keep bg-white for the iframe content itself as most web apps assume white base
                                 sandbox="allow-scripts allow-forms allow-same-origin"
                                 title="Project Preview"
+                                className="w-full h-full border-none bg-slate-50"
                             ></iframe>
                         </div>
                     )}
@@ -1133,6 +1170,33 @@ const Project = () => {
                                 </div>
                             </div>
                         </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+            {/* TOAST NOTIFICATION */}
+            <AnimatePresence>
+                {toast.show && (
+                    <motion.div
+                        initial={{ opacity: 0, y: -20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                        className={clsx(
+                            "absolute top-20 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-xl shadow-2xl z-[100] flex items-center gap-3 border backdrop-blur-md",
+                            toast.type === 'error' ? "bg-red-500/10 border-red-500/20 text-red-200" :
+                                toast.type === 'success' ? "bg-green-500/10 border-green-500/20 text-green-200" :
+                                    "bg-blue-500/10 border-blue-500/20 text-blue-200"
+                        )}
+                    >
+                        {toast.type === 'error' && <div className="w-2 h-2 rounded-full bg-red-500" />}
+                        {toast.type === 'success' && <div className="w-2 h-2 rounded-full bg-green-500" />}
+                        {toast.type === 'info' && <div className="w-2 h-2 rounded-full bg-blue-500" />}
+                        <span className="font-medium text-sm">{toast.message}</span>
+                        <button
+                            onClick={() => setToast(prev => ({ ...prev, show: false }))}
+                            className="ml-2 hover:opacity-70"
+                        >
+                            <X className="w-4 h-4" />
+                        </button>
                     </motion.div>
                 )}
             </AnimatePresence>
