@@ -1,0 +1,9 @@
+# Ignore node_modules because we will install dependencies inside the container
+node_modules
+# Ignore git files
+.git
+.gitignore
+# Ignore log files
+*.log
+# Ignore env file (optional, but safer to inject env vars at runtime)
+.env

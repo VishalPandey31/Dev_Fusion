@@ -1,0 +1,13 @@
+import 'dotenv/config';
+import express from 'express';
+console.log('Minimal server running');
+// import './services/redis.service.js';
+// console.log('Redis imported');
+import './services/ai.service.js';
+console.log('AI Service imported');
+import './db/db.js';
+console.log('DB imported');
+import './routes/user.routes.js';
+console.log('User Routes imported');
+import './routes/project.routes.js';
+console.log('Project Routes imported');
