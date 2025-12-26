@@ -26,7 +26,11 @@ const app = express();
    MIDDLEWARES
 ======================= */
 app.use(cors({
-    origin: true,
+    origin: [
+        'http://localhost:5173',
+        'https://devfusion-auto-8049.surge.sh',
+        'https://vishal-dev-fusion.surge.sh'
+    ],
     credentials: true
 }));
 app.use(morgan('dev'));
