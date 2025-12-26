@@ -247,7 +247,15 @@ const Project = () => {
     }
 
     function WriteAiMessage(message) {
-        const messageObject = JSON.parse(message)
+        // Clean markdown code blocks if present
+        const cleanMessage = message.replace(/```json\n?|```/g, '').trim();
+        let messageObject;
+        try {
+            messageObject = JSON.parse(cleanMessage);
+        } catch (e) {
+            console.error("Failed to parse AI message:", e);
+            messageObject = { text: cleanMessage }; // Fallback to raw text
+        }
         return (
             <div className='overflow-auto bg-slate-900/50 rounded-lg p-4 border border-slate-800 text-slate-100 shadow-sm'>
                 <Markdown
@@ -286,14 +294,28 @@ const Project = () => {
             if (data.sender._id == 'ai') {
                 setIsAiThinking(false)
                 try {
-                    const message = JSON.parse(data.message)
+                    const cleanMessage = data.message.replace(/```json\n?|```/g, '').trim();
+                    const message = JSON.parse(cleanMessage)
                     if (message.fileTree) {
                         webContainer?.mount(message.fileTree)
                         setFileTree(message.fileTree || {}) // This redundant check is fine or simplify
                     }
-                    setMessages(prevMessages => [...prevMessages, data])
+                    // Update data with clean message so it renders correctly if passed down raw
+
+                    setMessages(prevMessages => [...prevMessages, { ...data, message: cleanMessage }]) // Store CLEAN message? Or keep raw?
+                    // Better to store raw in DB usually, but for UI display we just fixed WriteAiMessage.
+                    // However, if we store the 'clean' message here in state, WriteAiMessage will receive clean JSON string
+                    // which is still a string and will need parsing again.
+                    // Wait, WriteAiMessage calls JSON.parse(message). 
+                    // If we save the JSON object in state, WriteAiMessage will choke if it expects a string.
+                    // Let's keep it as string but CLEANED string.
+
                 } catch (e) {
                     console.error("Failed to parse AI message:", e)
+                    // Still show message even if it failed specific JSON checks, just in case it was a plain text error
+                    // But wait, WriteAiMessage will also error. 
+                    // We should probably rely on WriteAiMessage's new safety there.
+                    setMessages(prevMessages => [...prevMessages, data])
                 }
             } else {
                 setMessages(prevMessages => [...prevMessages, data])
@@ -920,11 +942,10 @@ const Project = () => {
                             </div>
                             <iframe
                                 src={iframeUrl}
-                                className="w-full flex-grow bg-white"
                                 // Keep bg-white for the iframe content itself as most web apps assume white base
                                 sandbox="allow-scripts allow-forms allow-same-origin"
                                 title="Project Preview"
-                                className="w-full h-full border-none bg-slate-50"
+                                className="w-full h-full flex-grow border-none bg-white"
                             ></iframe>
                         </div>
                     )}

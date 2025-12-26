@@ -25,15 +25,25 @@ const AdminLogin = () => {
             setUser(res.data.user)
             navigate('/') // Redirect to dashboard
         }).catch((err) => {
-            console.log(err.response?.data)
-            const data = err.response?.data;
-            let errorMsg = 'Login failed';
-            if (data?.error) errorMsg = data.error;
-            else if (data?.errors) {
-                if (Array.isArray(data.errors)) errorMsg = data.errors[0]?.msg;
-                else errorMsg = data.errors;
+            console.log(err);
+            if (err.response) {
+                // Server responded with a status code outside 2xx
+                const data = err.response.data;
+                let errorMsg = 'Login failed';
+                if (data?.error) errorMsg = data.error;
+                else if (data?.errors) {
+                    if (Array.isArray(data.errors)) errorMsg = data.errors[0]?.msg || JSON.stringify(data.errors);
+                    else errorMsg = data.errors;
+                }
+                setError(typeof errorMsg === 'object' ? JSON.stringify(errorMsg) : errorMsg);
+            } else if (err.request) {
+                // Request was made but no response received
+                console.log(err.request);
+                setError('Network Error: Could not connect to server. Ensure Backend is running on Port 3000.');
+            } else {
+                // Something happened in setting up the request
+                setError('Error: ' + err.message);
             }
-            setError(typeof errorMsg === 'object' ? JSON.stringify(errorMsg) : errorMsg);
         })
     }
 

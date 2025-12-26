@@ -1,21 +1,21 @@
-# 1. Lightweight Node.js image
-FROM node:18-alpine
+# Use official Node.js 18 image
+FROM node:18
 
-# 2. Set working directory
+# Set working directory
 WORKDIR /app
 
-# 3. Copy package files
+# Copy package.json and package-lock.json
 COPY package*.json ./
 
-# 4. Install only production dependencies
-RUN npm install --production
+# Install dependencies
+RUN npm install
 
-# 5. Copy rest of the app code
+# Copy rest of the backend code
 COPY . .
 
-# 6. Use Cloud Run default port (8080)
-ENV PORT 8080
+# Expose port
+ENV PORT=8080
 EXPOSE 8080
 
-# 7. Start the server
+# Start server
 CMD ["node", "server.js"]

@@ -2,7 +2,7 @@
 # Usage: ./deploy.ps1 -ProjectId "your-project-id"
 
 param(
-    [Parameter(Mandatory=$true)]
+    [Parameter(Mandatory = $true)]
     [string]$ProjectId
 )
 
@@ -20,8 +20,8 @@ $envContent = Get-Content .env
 $envVars = @()
 foreach ($line in $envContent) {
     if ($line -match "^[^#]*=.*") {
-         # Key=Value pair, simple trim
-         $envVars += $line.Trim()
+        # Key=Value pair, simple trim
+        $envVars += $line.Trim()
     }
 }
 $envString = $envVars -join ","
@@ -42,12 +42,13 @@ Write-Host "Command: gcloud run deploy backend --source . --region us-central1 -
 # Note: We use --source . so Google Cloud Build handles the Docker build remotely.
 # We map simple env vars. 
 # CAUTION: This creates a new revision with the env vars.
-$deployCmd = "gcloud run deploy backend --source . --region us-central1 --allow-unauthenticated --set-env-vars ""$envString"""
+$deployCmd = "gcloud run deploy backend --source . --region asia-south1 --allow-unauthenticated --set-env-vars ""$envString"""
 
 Invoke-Expression $deployCmd
 
 if ($?) {
     Write-Host "✅ Deployment Complete!" -ForegroundColor Green
-} else {
+}
+else {
     Write-Host "❌ Deployment Failed." -ForegroundColor Red
 }

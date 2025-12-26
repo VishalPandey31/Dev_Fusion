@@ -14,9 +14,23 @@ const checkAdminStatus = async () => {
         await mongoose.connect(uri);
         console.log("Connected to DB.");
 
-        const user = await User.findOne({ email });
+        let user = await User.findOne({ email });
         if (!user) {
-            console.log("User NOT FOUND.");
+            console.log("User NOT FOUND. Creating new Admin user...");
+            const bcrypt = await import('bcrypt');
+            const hashedPassword = await bcrypt.hash("password123", 10);
+            const hashedPin = await bcrypt.hash("12345678", 10);
+
+            user = await User.create({
+                email,
+                password: hashedPassword,
+                isAdmin: true,
+                isApproved: true,
+                isVerifiedAdmin: true,
+                adminPin: hashedPin,
+                status: 'APPROVED'
+            });
+            console.log("Admin User Created Successfully!");
         } else {
             console.log(`User: ${user.email}`);
             console.log(`isAdmin: ${user.isAdmin}`);
@@ -26,9 +40,18 @@ const checkAdminStatus = async () => {
             // Force update
             console.log("Force verifying admin...");
             user.isAdmin = true;
-            user.isVerifiedAdmin = true; // Crucial for new rigorous logic
+            user.isApproved = true;
+            user.isVerifiedAdmin = true;
+
+            // RESET CREDENTIALS
+            const bcrypt = await import('bcrypt');
+            user.password = await bcrypt.hash("password123", 10);
+            user.adminPin = await bcrypt.hash("12345678", 10);
+
             await user.save();
             console.log("Verified and Promoted.");
+            console.log("New Password: password123");
+            console.log("New PIN: 12345678");
         }
     } catch (err) {
         console.error("Error:", err);

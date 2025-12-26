@@ -19,7 +19,9 @@ if (-not (Test-Path "dist\index.html")) {
     Write-Error "❌ Build failed: dist\index.html not found!"
     exit 1
 }
-Write-Host "✅ Build verified." -ForegroundColor Green
+# SPA Support for Surge (Redirects 404s to index.html)
+Copy-Item "dist\index.html" -Destination "dist\200.html"
+Write-Host "✅ Build verified & SPA fallback(200.html) created." -ForegroundColor Green
 
 # 5. Generate Random Domain
 $randomId = Get-Random -Minimum 1000 -Maximum 9999

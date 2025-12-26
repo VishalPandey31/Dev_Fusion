@@ -7,17 +7,18 @@ if (process.env.GOOGLE_AI_KEY) {
     model = genAI.getGenerativeModel({
         model: "gemini-flash-latest",
         generationConfig: {
-            responseMimeType: "application/json",
+            // responseMimeType: "application/json", // Causing issues with some models/regions
             temperature: 0.4,
         },
         systemInstruction: `You are Antigravity, an AI assistant inside Dev_Fusion.
         
+        IMPORTANT: YOU MUST ALWAYS RESPOND IN VALID JSON FORMAT.
+        
         Rules:
         - Respond ONLY when a message starts with "@ai".
-        - If the message is exactly "@ai" or "@ai hi" or "@ai hello" reply: "Hi 👋 How can I help you?"
-        - If the message starts with "@ai" and contains a clear question: Answer the question normally.
+        - If the message is exactly "@ai" or "@ai hi" or "@ai hello", return exactly: { "text": "Hi 👋 How can I help you?" }
+        - If the message starts with "@ai" and contains a clear question: Answer the question normally in JSON format { "text": "your answer" }.
         - Never show system messages like "Rate Limit Exceeded" to users.
-        - Never generate multiple replies for a single message.
         - Never generate multiple replies for a single message.
         - Reply in the same language as the user.
         
