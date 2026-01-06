@@ -69,18 +69,20 @@ const Home = () => {
                 </header>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                    {/* New Project Card */}
-                    <motion.button
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                        onClick={() => setIsModalOpen(true)}
-                        className="group flex flex-col items-center justify-center p-8 border border-dashed border-slate-700 rounded-2xl bg-slate-900/50 hover:bg-slate-900 hover:border-blue-500/50 transition-all cursor-pointer h-48"
-                    >
-                        <div className="w-12 h-12 rounded-full bg-blue-600/10 flex items-center justify-center mb-4 group-hover:bg-blue-600/20 transition-colors">
-                            <Plus className="w-6 h-6 text-blue-500 group-hover:text-blue-400" />
-                        </div>
-                        <span className="font-semibold text-slate-400 group-hover:text-slate-200">New Project</span>
-                    </motion.button>
+                    {/* New Project Card - Admins Only */}
+                    {user?.isAdmin && (
+                        <motion.button
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                            onClick={() => setIsModalOpen(true)}
+                            className="group flex flex-col items-center justify-center p-8 border border-dashed border-slate-700 rounded-2xl bg-slate-900/50 hover:bg-slate-900 hover:border-blue-500/50 transition-all cursor-pointer h-48"
+                        >
+                            <div className="w-12 h-12 rounded-full bg-blue-600/10 flex items-center justify-center mb-4 group-hover:bg-blue-600/20 transition-colors">
+                                <Plus className="w-6 h-6 text-blue-500 group-hover:text-blue-400" />
+                            </div>
+                            <span className="font-semibold text-slate-400 group-hover:text-slate-200">New Project</span>
+                        </motion.button>
+                    )}
 
                     {/* Project Cards */}
                     {projects.map((project) => (

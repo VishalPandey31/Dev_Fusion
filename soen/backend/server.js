@@ -21,6 +21,21 @@ import sessionModel from './models/session.model.js';
 import { generateResult } from './services/ai.service.js';
 
 const app = express();
+// Trigger restart
+
+
+// Crash Logging
+import fs from 'fs';
+process.on('uncaughtException', (err) => {
+    fs.appendFileSync('crash.log', `[${new Date().toISOString()}] Uncaught Exception: ${err.message}\n${err.stack}\n`);
+    console.error('Uncaught Exception:', err);
+    process.exit(1);
+});
+process.on('unhandledRejection', (reason, promise) => {
+    fs.appendFileSync('crash.log', `[${new Date().toISOString()}] Unhandled Rejection: ${reason}\n`);
+    console.error('Unhandled Rejection:', reason);
+    // Don't exit on rejection, but nice to know
+});
 
 /* =======================
    MIDDLEWARES
@@ -34,8 +49,8 @@ app.use(cors({
     credentials: true
 }));
 app.use(morgan('dev'));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(cookieParser());
 
 /* =======================
@@ -208,7 +223,7 @@ io.on('connection', async (socket) => {
 /* =======================
    SERVER START (CLOUD RUN)
 ======================= */
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 3000;
 
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);

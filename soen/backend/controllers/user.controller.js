@@ -265,6 +265,7 @@ export const adminLoginController = async (req, res) => {
     }
 }
 
+
 export const approveUserController = async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -283,5 +284,35 @@ export const approveUserController = async (req, res) => {
     } catch (err) {
         console.log(err);
         res.status(400).json({ error: err.message });
+    }
+}
+
+export const updatePreferencesController = async (req, res) => {
+    try {
+        console.log("updatePreferencesController called");
+        console.log("req.user:", req.user);
+        const { preferredStack, codeStyle, language } = req.body;
+        const userId = req.user.id || req.user._id;
+        console.log("UserID:", userId);
+
+        const user = await userModel.findByIdAndUpdate(
+            userId,
+            {
+                $set: {
+                    'preferences.preferredStack': preferredStack,
+                    'preferences.codeStyle': codeStyle,
+                    'preferences.language': language
+                }
+            },
+            { new: true }
+        );
+
+        res.status(200).json({
+            message: "Preferences updated successfully",
+            preferences: user.preferences
+        });
+    } catch (error) {
+        console.error("Update Preferences Error:", error);
+        res.status(500).json({ error: "Failed to update preferences" });
     }
 }

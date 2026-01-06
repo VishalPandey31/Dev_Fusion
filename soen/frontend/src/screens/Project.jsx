@@ -2,7 +2,7 @@ import React, { useState, useEffect, useContext, useRef } from 'react'
 import { UserContext } from '../context/user.context'
 import { useNavigate, useLocation } from 'react-router-dom'
 import axios from '../config/axios'
-import { initializeSocket, receiveMessage, sendMessage } from '../config/socket'
+import { initializeSocket, receiveMessage, sendMessage, removeListener } from '../config/socket'
 import Markdown from 'markdown-to-jsx'
 import hljs from 'highlight.js';
 import { getWebContainer } from '../config/webcontainer'
@@ -30,10 +30,26 @@ import {
     Check,
     Trash2,
     Sun,
-    Moon
+    Moon,
+    Search,
+    Calendar,
+    Filter,
+    Download,
+    Share2,
+    Mail,
+    MessageCircle,
+    Copy,
+    CodeXml,
+    Brain,
+    Lightbulb,
+    CheckCircle,
+    Sparkles,
+    Save
 } from 'lucide-react'
 import clsx from 'clsx'
-import 'highlight.js/styles/github-dark.css' // Ensure dark theme for code
+import 'highlight.js/styles/github-dark.css'
+import SearchModal from '../components/SearchModal'
+import { format, isToday, isYesterday, isSameDay } from 'date-fns'
 
 function SyntaxHighlightedCode(props) {
     const ref = useRef(null)
@@ -48,6 +64,56 @@ function SyntaxHighlightedCode(props) {
     return <code {...props} ref={ref} />
 }
 
+// Memoized AI Message Component - MOVED OUTSIDE Project component
+const AiMessage = React.memo(({ message }) => {
+    if (typeof message !== 'string') return <p>Invalid message format</p>;
+
+    // Clean markdown code blocks if present
+    const cleanMessage = message.replace(/```json\n?|```/g, '').trim();
+    let messageObject;
+    try {
+        messageObject = JSON.parse(cleanMessage);
+    } catch (e) {
+        // Fallback to raw text
+        messageObject = { text: message };
+    }
+
+    const textContent = (typeof messageObject.text === 'string') ? messageObject.text : JSON.stringify(messageObject, null, 2);
+
+    return (
+        <div className='overflow-auto bg-slate-900/50 rounded-lg p-4 border border-slate-800 text-slate-100 shadow-sm font-mono whitespace-pre-wrap'>
+            {textContent}
+        </div>
+    );
+});
+
+
+
+function mergeFileTrees(target, source) {
+    const output = { ...target };
+    if (Object.keys(source).length === 0) return output; // Handle empty source
+
+    for (const key in source) {
+        if (Object.prototype.hasOwnProperty.call(source, key)) {
+            if (source[key] && typeof source[key] === 'object' && !source[key].file) {
+                // It's a directory (or object acting as one), check if it exists in target
+                if (target[key] && typeof target[key] === 'object' && !target[key].file) {
+                    output[key] = mergeFileTrees(target[key], source[key]);
+                } else {
+                    output[key] = source[key];
+                }
+            } else {
+                // It's a file or overwriting a non-directory
+                output[key] = {
+                    ...source[key],
+                    lastModified: source[key].lastModified || new Date().toISOString()
+                };
+            }
+        }
+    }
+    return output;
+}
+
 const Project = () => {
     const location = useLocation()
     const navigate = useNavigate()
@@ -57,27 +123,60 @@ const Project = () => {
 
 
     // Safety check for location.state
+    useEffect(() => {
+        if (!location.state || !location.state.project) {
+            navigate('/')
+        }
+    }, [location.state, navigate])
+
     if (!location.state || !location.state.project) {
-        // Return null or loader during redirect to avoid crash
-        // We will use useEffect to redirect
+        return <div className="flex items-center justify-center h-screen bg-slate-900 text-white">Loading...</div>
     }
 
     const [selectedUserId, setSelectedUserId] = useState(new Set())
     // Use optional chaining or default to avoid initial crash, though effect will redirect
     const [project, setProject] = useState(location.state?.project || {})
     const [message, setMessage] = useState('')
-    const { user } = useContext(UserContext)
+    const { user, setUser } = useContext(UserContext)
     const messageBox = React.createRef()
+
+
 
     const [users, setUsers] = useState([])
     const [messages, setMessages] = useState([])
     const [fileTree, setFileTree] = useState({})
 
     const [currentFile, setCurrentFile] = useState(null)
+
+    // Debug: Ref to track current file for event listeners
+    const currentFileRef = useRef(null)
+    useEffect(() => {
+        currentFileRef.current = currentFile
+    }, [currentFile])
     const [openFiles, setOpenFiles] = useState([])
+
+    const [fileFilter, setFileFilter] = useState('all') // 'all', 'today', 'yesterday', 'custom'
+    const [filterDate, setFilterDate] = useState('')
+    const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false)
+
+    // Derived state for filtered files
+    const filteredFiles = Object.keys(fileTree).filter(file => {
+        const item = fileTree[file]
+        const date = item.lastModified ? new Date(item.lastModified) : null
+
+        if (!date) return fileFilter === 'all'; // Show untimestamped files only in 'all'
+
+        if (fileFilter === 'all') return true;
+        if (fileFilter === 'today') return isToday(date);
+        if (fileFilter === 'yesterday') return isYesterday(date);
+        if (fileFilter === 'custom' && filterDate) return isSameDay(date, new Date(filterDate));
+
+        return true;
+    });
 
     const [terminalOutput, setTerminalOutput] = useState([]) // New state for terminal output
     const [isStatsModalOpen, setIsStatsModalOpen] = useState(false)
+    const [isSearchModalOpen, setIsSearchModalOpen] = useState(false)
     const [projectStats, setProjectStats] = useState({})
     // Terminal resizing state
     const [terminalHeight, setTerminalHeight] = useState(250) // Default height
@@ -123,6 +222,163 @@ const Project = () => {
     const [runStatus, setRunStatus] = useState(null) // "mounting", "installing", "starting"
     const [activeUsers, setActiveUsers] = useState({}) // { userId: { email, currentFile } }
     const [isAiThinking, setIsAiThinking] = useState(false) // Visual indicator for AI processing
+
+    // AI Feedback State
+    const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false)
+    const [feedbackData, setFeedbackData] = useState(null)
+    const [isAnalyzing, setIsAnalyzing] = useState(false)
+
+    const [reviewLanguage, setReviewLanguage] = useState('English');
+    const [feedbackCache, setFeedbackCache] = useState({}); // Cache for instant toggling
+
+    async function handleAnalyzeCode(overrideLanguage = null) {
+        if (!currentFile || !fileTree[currentFile]) {
+            showToast("Please open a file to analyze", "error");
+            return;
+        }
+
+        const code = fileTree[currentFile].file.contents;
+
+        if (!code || code.trim().length === 0) {
+            showToast("File is empty", "error");
+            return;
+        }
+
+        // Language Override Logic
+        const isLanguageOverride = typeof overrideLanguage === 'string';
+        let langToSend = isLanguageOverride ? overrideLanguage : reviewLanguage;
+
+        if (typeof langToSend !== 'string') {
+            langToSend = 'English';
+        }
+
+        // 1. If this is a fresh analysis (not a toggle), clear cache
+        if (!isLanguageOverride) {
+            setFeedbackCache({});
+        }
+
+        // 2. Check Cache (Instant Switch)
+        if (isLanguageOverride && feedbackCache[langToSend]) {
+            setFeedbackData(feedbackCache[langToSend]);
+            setReviewLanguage(overrideLanguage);
+            return;
+        }
+
+        if (isLanguageOverride) setReviewLanguage(overrideLanguage);
+
+        setIsAnalyzing(true);
+        try {
+            const res = await axios.post('/ai/get-feedback', {
+                code,
+                language: langToSend
+            });
+            setFeedbackData(res.data);
+            setIsFeedbackModalOpen(true);
+
+            // 3. Update Cache
+            setFeedbackCache(prev => ({ ...prev, [langToSend]: res.data }));
+        } catch (error) {
+            console.error(error);
+            showToast("Failed to analyze code", "error");
+        } finally {
+            setIsAnalyzing(false);
+        }
+    }
+
+    // --- Feature 2 & 3 State & Logic ---
+    const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+    const [preferences, setPreferences] = useState({ preferredStack: 'React/Node', codeStyle: 'Standard', language: 'English' });
+
+    // Load prefs when opening modal
+    useEffect(() => {
+        if (isSettingsModalOpen && user) {
+            // Ideally we fetch from API, but for now we default or use what's in user object if available
+            if (user.preferences) {
+                setPreferences(user.preferences);
+            }
+        }
+    }, [isSettingsModalOpen, user]);
+
+    async function handleSavePreferences(e) {
+        e.preventDefault();
+        try {
+            const res = await axios.put('/users/preferences', preferences);
+            showToast("Preferences saved!", "success");
+            setIsSettingsModalOpen(false);
+
+            // Update User Context to reflect changes immediately
+            if (setUser) {
+                setUser(prev => ({ ...prev, preferences: res.data.preferences }));
+            }
+        } catch (error) {
+            console.error(error);
+            showToast("Failed to save preferences", "error");
+        }
+    }
+
+    const [isSmartFixOpen, setIsSmartFixOpen] = useState(false);
+    const [fixErrorInput, setFixErrorInput] = useState('');
+    const [fixResult, setFixResult] = useState(null);
+    const [isFixing, setIsFixing] = useState(false);
+    const [smartFixLanguage, setSmartFixLanguage] = useState('English');
+    const [smartFixCache, setSmartFixCache] = useState({}); // Cache for instant toggling
+
+    function openSmartFix() {
+        setSmartFixCache({}); // Clear cache on new open
+        // Try to grab last error from terminal
+        const text = terminalOutput.join('\n');
+        // Simple heuristic: grab last 5 lines if they contain "Error"
+        if (text.toLowerCase().includes('error')) {
+            const lines = text.split('\n');
+            const errorLines = lines.slice(-10).join('\n'); // Last 10 lines
+            setFixErrorInput(errorLines);
+        } else {
+            setFixErrorInput('');
+        }
+        setFixResult(null);
+        setIsSmartFixOpen(true);
+    }
+
+    async function handleSmartFix(overrideLanguage = null) {
+        if (!fixErrorInput.trim()) return;
+
+        // If called via onClick={handleSmartFix}, overrideLanguage is an Event object. Ignore it.
+        const isLanguageOverride = typeof overrideLanguage === 'string';
+        let langToSend = isLanguageOverride ? overrideLanguage : smartFixLanguage;
+
+        // CRITICAL SAFETY: Ensure langToSend is a string. If state is corrupted (e.g. holding an Event object), force reset.
+        if (typeof langToSend !== 'string') {
+            console.warn("Detected corrupted language state. Resetting to English.");
+            langToSend = 'English';
+        }
+
+        // Check Cache (Instant Switch)
+        if (isLanguageOverride) {
+            if (smartFixCache[langToSend]) {
+                setFixResult(smartFixCache[langToSend]);
+                setSmartFixLanguage(overrideLanguage);
+                return;
+            }
+            setSmartFixLanguage(overrideLanguage);
+        }
+
+        setIsFixing(true);
+        try {
+            const res = await axios.post('/ai/fix-error', {
+                errorMessage: fixErrorInput,
+                language: langToSend
+            });
+            setFixResult(res.data);
+            // Update Cache
+            setSmartFixCache(prev => ({ ...prev, [langToSend]: res.data }));
+        } catch (error) {
+
+            console.error(error);
+            showToast("Failed to find fix", "error");
+        } finally {
+            setIsFixing(false);
+        }
+    }
 
     // Handle user selection for collaborators
     const handleUserClick = (id) => {
@@ -246,34 +502,15 @@ const Project = () => {
         setMessage("")
     }
 
-    function WriteAiMessage(message) {
-        // Clean markdown code blocks if present
-        const cleanMessage = message.replace(/```json\n?|```/g, '').trim();
-        let messageObject;
-        try {
-            messageObject = JSON.parse(cleanMessage);
-        } catch (e) {
-            console.error("Failed to parse AI message:", e);
-            messageObject = { text: cleanMessage }; // Fallback to raw text
-        }
-        return (
-            <div className='overflow-auto bg-slate-900/50 rounded-lg p-4 border border-slate-800 text-slate-100 shadow-sm'>
-                <Markdown
-                    children={messageObject.text}
-                    options={{
-                        overrides: {
-                            code: SyntaxHighlightedCode,
-                        },
-                    }}
-                />
-            </div>)
-    }
+
 
     useEffect(() => {
         if (!location.state || !location.state.project) {
             navigate('/')
             return
         }
+
+        // ISOLATION TEST: DISABLED SOCKET & WEBCONTAINE & API
         initializeSocket(project._id)
 
         if (!webContainer) {
@@ -284,54 +521,54 @@ const Project = () => {
                 })
                 .catch(err => {
                     console.error("Failed to boot WebContainer:", err)
-                    alert("Failed to initialize WebContainer. Check console for details.")
+                    showToast("WebContainer failed to start. Refresh page.", "error")
                 })
         }
 
         receiveMessage('project-message', data => {
-            console.log(data)
+            const message = data.message;
 
-            if (data.sender._id == 'ai') {
-                setIsAiThinking(false)
-                try {
-                    const cleanMessage = data.message.replace(/```json\n?|```/g, '').trim();
-                    const message = JSON.parse(cleanMessage)
-                    if (message.fileTree) {
-                        webContainer?.mount(message.fileTree)
-                        setFileTree(message.fileTree || {}) // This redundant check is fine or simplify
-                    }
-                    // Update data with clean message so it renders correctly if passed down raw
+            // Check if message is JSON and contains fileTree
+            try {
+                const cleanMessage = message.replace(/```json\n?|```/g, '').trim();
+                const parsedMessage = JSON.parse(cleanMessage);
 
-                    setMessages(prevMessages => [...prevMessages, { ...data, message: cleanMessage }]) // Store CLEAN message? Or keep raw?
-                    // Better to store raw in DB usually, but for UI display we just fixed WriteAiMessage.
-                    // However, if we store the 'clean' message here in state, WriteAiMessage will receive clean JSON string
-                    // which is still a string and will need parsing again.
-                    // Wait, WriteAiMessage calls JSON.parse(message). 
-                    // If we save the JSON object in state, WriteAiMessage will choke if it expects a string.
-                    // Let's keep it as string but CLEANED string.
+                if (parsedMessage.fileTree) {
+                    // Inject timestamp if missing
+                    const timestamp = new Date().toISOString();
+                    const treeWithTimestamp = { ...parsedMessage.fileTree };
 
-                } catch (e) {
-                    console.error("Failed to parse AI message:", e)
-                    // Still show message even if it failed specific JSON checks, just in case it was a plain text error
-                    // But wait, WriteAiMessage will also error. 
-                    // We should probably rely on WriteAiMessage's new safety there.
-                    setMessages(prevMessages => [...prevMessages, data])
+                    Object.keys(treeWithTimestamp).forEach(key => {
+                        if (treeWithTimestamp[key].file) {
+                            treeWithTimestamp[key] = {
+                                ...treeWithTimestamp[key],
+                                lastModified: timestamp
+                            };
+                        }
+                    });
+
+                    // Update file tree
+                    setFileTree(prevTree => {
+                        const newTree = mergeFileTrees(prevTree, treeWithTimestamp);
+                        saveFileTree(newTree); // Persist to backend
+                        return newTree;
+                    });
+                    setProject(prev => {
+                        const newTree = mergeFileTrees(prev.fileTree || {}, treeWithTimestamp);
+                        return {
+                            ...prev,
+                            fileTree: newTree
+                        }
+                    })
                 }
-            } else {
-                setMessages(prevMessages => [...prevMessages, data])
+            } catch (e) {
+                // Not JSON or invalid, just a normal message
             }
-        })
 
-        receiveMessage('project-activity', data => {
-            // data = { userId, email, field: 'file', value: 'filename' }
-            setActiveUsers(prev => ({
-                ...prev,
-                [data.userId]: {
-                    ...prev[data.userId],
-                    email: data.email,
-                    [data.field]: data.value
-                }
-            }))
+            if (data.sender._id === 'ai') {
+                setIsAiThinking(false)
+            }
+            setMessages(prev => [...prev, data])
         })
 
         axios.get(`/projects/get-project/${location.state.project._id}`).then(res => {
@@ -341,29 +578,48 @@ const Project = () => {
 
         axios.get(`/projects/get-messages/${location.state.project._id}`).then(res => {
             setMessages(res.data.messages)
-        }).catch(err => {
-            console.log(err)
         })
 
         axios.get('/users/all').then(res => {
             setUsers(res.data.users)
-        }).catch(err => {
-            console.log(err)
         })
+
+
+
+
+
+        // Cleanup function for socket listeners
+        return () => {
+            // We can use the imported removeListener directly if we updated the import
+            // For now, let's just make sure we don't crash and assuming imports will be fixed or we can just access socket instance via the existing import if it was default
+            // Actually, initializeSocket returns the instance. 
+            const socket = initializeSocket(project._id);
+            if (socket) {
+                socket.off('project-message');
+                socket.off('project-activity');
+            }
+        }
     }, [])
 
     // Persistence: Restore state
+
     useEffect(() => {
         if (!project?._id) return;
-        const savedOpenFiles = localStorage.getItem(`openFiles_${project._id}`);
-        const savedCurrentFile = localStorage.getItem(`currentFile_${project._id}`);
-        if (savedOpenFiles) {
-            setOpenFiles(JSON.parse(savedOpenFiles));
+
+        try {
+            const savedOpenFiles = localStorage.getItem(`openFiles_${project._id}`);
+            const savedCurrentFile = localStorage.getItem(`currentFile_${project._id}`);
+
+            if (savedOpenFiles) {
+                setOpenFiles(JSON.parse(savedOpenFiles));
+            }
+            if (savedCurrentFile) {
+                setCurrentFile(savedCurrentFile);
+            }
+        } catch (e) {
+            console.error("Error restoring project state:", e);
         }
-        if (savedCurrentFile) {
-            setCurrentFile(savedCurrentFile);
-        }
-    }, [project._id]);
+    }, [project?._id]);
 
     // Persistence: Save state
     useEffect(() => {
@@ -413,10 +669,31 @@ const Project = () => {
             .replace(/[\x00-\x09\x0B-\x0C\x0E-\x1F\x7F]/g, ''); // Remove control chars (except \n)
     }
 
+    const [serverUrl, setServerUrl] = useState(null); // Store base server URL
+
+    // Smart Preview: Auto-update iframe when file changes
+    useEffect(() => {
+        if (serverUrl && currentFile && currentFile.endsWith('.html')) {
+            const cleanFile = currentFile.startsWith('/') ? currentFile.slice(1) : currentFile;
+            setIframeUrl(`${serverUrl}/${cleanFile}`);
+        }
+    }, [currentFile, serverUrl]);
+
     async function handleRun() {
         if (!webContainer) {
             console.warn("Run clicked but WebContainer is null")
             alert("WebContainer is booting... please wait.")
+            return
+        }
+
+        if (isRunning) {
+            console.log("Stopping run process...")
+            if (runProcess) {
+                runProcess.kill()
+                setTerminalOutput(prev => [...prev, "\n> Process terminated by user."])
+            }
+            setIsRunning(false)
+            setRunStatus(null)
             return
         }
 
@@ -457,25 +734,51 @@ const Project = () => {
                 }))
 
                 if (await installProcess.exit !== 0) {
-                    setTerminalOutput(prev => [...prev, "Installation failed."])
-                    throw new Error("Installation failed");
+                    setTerminalOutput(prev => [...prev, "Npm installation failed. Check console."])
+                    // non-blocking warning
+                } else {
+                    setTerminalOutput(prev => [...prev, "Installation complete.", ""])
                 }
-                setTerminalOutput(prev => [...prev, "Installation complete.", ""])
             } else {
-                setTerminalOutput(prev => [...prev, "No package.json, skipping install.", ""])
+                setTerminalOutput(prev => [...prev, "No package.json, skipping npm install.", ""])
             }
+
 
             setRunStatus("starting")
             setTerminalOutput(prev => [...prev, "Starting server..."])
+            setIframeUrl(null)
 
             if (runProcess) {
                 runProcess.kill()
                 await new Promise(resolve => setTimeout(resolve, 1000));
             }
 
-            let tempRunProcess = await webContainer.spawn("npm", ["start"]);
+            let tempProcess;
 
-            tempRunProcess.output.pipeTo(new WritableStream({
+            // SMART RUN LOGIC: Check if current file is Python
+            if (currentFile && currentFile.endsWith('.py')) {
+                setTerminalOutput(prev => [...prev, `> python3 ${currentFile}`, ""])
+                tempProcess = await webContainer.spawn("python3", [currentFile])
+            }
+            // SMART RUN LOGIC: Check if current file is JavaScript (Standalone)
+            else if (currentFile && currentFile.endsWith('.js') && currentFile !== 'server.js') {
+                // We exclude server.js from "standalone" logic if we want to allow it to run via npm start potentially?
+                // Actually, running `node server.js` directly is usually fine too.
+                // let's just run it directly.
+                setTerminalOutput(prev => [...prev, `> node ${currentFile}`, ""])
+                tempProcess = await webContainer.spawn("node", [currentFile])
+            }
+            // Default Node.js Logic (npm start)
+            else if (fileTree['package.json'] && fileTree['package.json'].file.contents.includes('"start"')) {
+                setTerminalOutput(prev => [...prev, "> npm start"])
+                tempProcess = await webContainer.spawn("npm", ["start"])
+            }
+            else {
+                setTerminalOutput(prev => [...prev, "> node server.js"])
+                tempProcess = await webContainer.spawn("node", ["server.js"])
+            }
+
+            tempProcess.output.pipeTo(new WritableStream({
                 write(chunk) {
                     const str = chunk.toString();
                     const cleanStr = stripAnsi(str);
@@ -485,23 +788,18 @@ const Project = () => {
                 }
             }))
 
-            setRunProcess(tempRunProcess)
+
+            setRunProcess(tempProcess)
+            setRunStatus("running")
 
             // CRITICAL FIX: Listen for exit
-            tempRunProcess.exit.then((code) => {
+            tempProcess.exit.then((code) => {
                 console.log("Process exited with code", code);
                 setTerminalOutput(prev => [...prev, `\nProcess exited with code ${code}`])
                 setIsRunning(false);
                 setRunStatus(null);
             })
 
-            webContainer.on('server-ready', (port, url) => {
-                console.log(port, url)
-                setTerminalOutput(prev => [...prev, `\nServer ready at ${url}\n`])
-                setIframeUrl(url)
-                setIsRunning(false)
-                setRunStatus(null)
-            })
         } catch (error) {
             console.error(error)
             setTerminalOutput(prev => [...prev, `\nError: ${error.message}\n`])
@@ -510,6 +808,91 @@ const Project = () => {
             setRunStatus(null)
         }
     }
+
+    function downloadFile() {
+        if (!currentFile || !fileTree[currentFile]) return;
+        const fileContent = fileTree[currentFile].file.contents;
+        const blob = new Blob([fileContent], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = currentFile;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+
+    const [isShareMenuOpen, setIsShareMenuOpen] = useState(false);
+
+    function shareToWhatsApp() {
+        if (!currentFile || !fileTree[currentFile]) return;
+        const fileContent = fileTree[currentFile].file.contents;
+        // Truncate if too long (approx limit for URL is 2000, keep safety margin)
+        const textToShare = fileContent.length > 1500
+            ? fileContent.substring(0, 1500) + "...(truncated)"
+            : fileContent;
+
+        const url = `https://api.whatsapp.com/send?text=*${encodeURIComponent(currentFile)}*%0A%0A${encodeURIComponent(textToShare)}`;
+        window.open(url, '_blank');
+        setIsShareMenuOpen(false);
+    }
+
+    function shareToMail() {
+        if (!currentFile || !fileTree[currentFile]) return;
+        const fileContent = fileTree[currentFile].file.contents;
+        const textToShare = fileContent.length > 1500
+            ? fileContent.substring(0, 1500) + "...(truncated)"
+            : fileContent;
+
+        const url = `mailto:?subject=${encodeURIComponent(currentFile)}&body=${encodeURIComponent(textToShare)}`;
+        window.open(url, '_blank');
+        setIsShareMenuOpen(false);
+    }
+
+    function copyToClipboard() {
+        if (!currentFile || !fileTree[currentFile]) return;
+        const fileContent = fileTree[currentFile].file.contents;
+        navigator.clipboard.writeText(fileContent);
+        showToast("Copied to clipboard", "success");
+        setIsShareMenuOpen(false);
+    }
+
+    // Separate Effect for Server Ready to avoid listener stacking
+    useEffect(() => {
+        if (!webContainer) return;
+
+        const unsubscribe = webContainer.on('server-ready', (port, url) => {
+            console.log("Server Ready Event:", port, url);
+            const activeFile = currentFileRef.current; // Get fresh value
+
+            // REMOVED: Python preview blocker. Now allowing all previews.
+
+            setTerminalOutput(prev => [...prev, `\nServer ready at ${url}\n`])
+            setServerUrl(url);
+
+            // Construct specific URL
+            let finalUrl = url;
+            if (activeFile && activeFile.endsWith('.html')) {
+                const cleanFile = activeFile.startsWith('/') ? activeFile.slice(1) : activeFile;
+                finalUrl = `${url}/${cleanFile}`;
+            }
+
+            setIframeUrl(finalUrl)
+
+            // Only stop spinner if we are "starting", if we are "running" (e.g. restart) it's fine
+            // actually handleRun sets running.
+        });
+
+        return () => {
+            // WebContainer doesn't provide easy off for specific listener if we don't hold ref, 
+            // but in React useEffect cleanup, we should try.
+            // However, native WebContainer API 'on' returns a teardown function usually? 
+            // Checking docs... V1 returns Unsubscribe. Assuming yes.
+            if (typeof unsubscribe === 'function') unsubscribe();
+        };
+    }, [webContainer]);
 
     return (
         <main className='h-screen w-screen flex bg-slate-950 text-slate-100 overflow-hidden font-sans'>
@@ -527,11 +910,25 @@ const Project = () => {
                         </button>
                     </div>
                     <button
+                        onClick={() => setIsSearchModalOpen(true)}
+                        className="p-2 hover:bg-slate-800 rounded-lg transition-colors text-slate-400 hover:text-white"
+                        title="Search"
+                    >
+                        <Search className="w-5 h-5" />
+                    </button>
+                    <button
                         onClick={fetchStats}
                         className="p-2 hover:bg-slate-800 rounded-lg transition-colors text-slate-400 hover:text-white"
                         title="View Stats"
                     >
                         <BarChart2 className="w-5 h-5" />
+                    </button>
+                    <button
+                        onClick={() => setIsSettingsModalOpen(true)}
+                        className="p-2 hover:bg-slate-800 rounded-lg transition-colors text-slate-400 hover:text-white"
+                        title="AI Preferences"
+                    >
+                        <Settings className="w-5 h-5" />
                     </button>
                     {user.isAdmin && (
                         <button
@@ -543,6 +940,32 @@ const Project = () => {
                         </button>
                     )}
                 </header>
+
+                <SearchModal
+                    isOpen={isSearchModalOpen}
+                    onClose={() => setIsSearchModalOpen(false)}
+                    projectId={project._id}
+                    onFileClick={(filename) => {
+                        setCurrentFile(filename);
+                        setOpenFiles(prev => [...new Set([...prev, filename])]);
+                    }}
+                    onMessageClick={(messageId) => {
+                        // Use setTimeout to allow modal to close and UI to update
+                        setTimeout(() => {
+                            const element = document.getElementById(`message-${messageId}`);
+                            if (element) {
+                                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                // Add a highlight class temporarily
+                                element.classList.add('bg-blue-500/20');
+                                setTimeout(() => {
+                                    element.classList.remove('bg-blue-500/20');
+                                }, 2000);
+                            } else {
+                                console.warn("Message element not found:", messageId);
+                            }
+                        }, 100);
+                    }}
+                />
 
                 {/* Chat Area */}
                 {/* Chat Area */}
@@ -556,8 +979,9 @@ const Project = () => {
                                 initial={{ opacity: 0, y: 10 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 key={index}
+                                id={`message-${msg._id}`}
                                 className={clsx(
-                                    "flex flex-col max-w-[85%]", // 85% width for better chat feel
+                                    "flex flex-col max-w-[85%] transition-colors duration-500 rounded-lg p-1", // Added transition and padding for highlight effect
                                     msg.sender._id == user._id.toString() ? "self-end items-end" : "self-start items-start"
                                 )}
                             >
@@ -579,7 +1003,7 @@ const Project = () => {
                                     msg.sender._id === 'ai' && "w-full max-w-full !p-0 !bg-transparent !border-none !shadow-none" // AI message handles its own styles
                                 )}>
                                     {msg.sender._id === 'ai' ? (
-                                        WriteAiMessage(msg.message)
+                                        <AiMessage message={msg.message} />
                                     ) : (
                                         <p>{msg.message}</p>
                                     )}
@@ -680,11 +1104,49 @@ const Project = () => {
 
                     {/* File Explorer */}
                     <div className="explorer h-full w-64 bg-slate-950 border-r border-slate-800 flex flex-col shrink-0">
-                        <div className="p-4 border-b border-slate-800 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                            Files
+                        <div className="p-4 border-b border-slate-800 flex justify-between items-center text-xs font-bold text-slate-500 uppercase tracking-wider">
+                            <span>Files {filteredFiles.length}</span>
+                            <div className="relative">
+                                <button
+                                    onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
+                                    className="p-1 hover:bg-slate-800 rounded transition-colors"
+                                    title="Filter Files"
+                                >
+                                    <Filter className="w-4 h-4" />
+                                </button>
+                                {isFilterMenuOpen && (
+                                    <div className="absolute right-0 top-full mt-2 w-48 bg-slate-900 border border-slate-700 rounded-lg shadow-xl z-50 overflow-hidden">
+                                        <div className="p-2 flex flex-col gap-1">
+                                            {['all', 'today', 'yesterday'].map(f => (
+                                                <button
+                                                    key={f}
+                                                    onClick={() => { setFileFilter(f); setIsFilterMenuOpen(false); }}
+                                                    className={clsx(
+                                                        "text-left px-3 py-2 text-sm rounded-md transition-colors capitalize",
+                                                        fileFilter === f ? "bg-blue-600 text-white" : "text-slate-300 hover:bg-slate-800"
+                                                    )}
+                                                >
+                                                    {f} Files
+                                                </button>
+                                            ))}
+                                            <div className="border-t border-slate-800 my-1"></div>
+                                            <div className="px-3 py-2 text-xs text-slate-500">Custom Date</div>
+                                            <input
+                                                type="date"
+                                                className="w-full bg-slate-800 text-white text-xs p-2 rounded border border-slate-700 focus:outline-none focus:border-blue-500"
+                                                onChange={(e) => {
+                                                    setFilterDate(e.target.value);
+                                                    setFileFilter('custom');
+                                                    setIsFilterMenuOpen(false);
+                                                }}
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                         <div className="file-tree flex-grow overflow-auto p-2">
-                            {Object.keys(fileTree).map((file, index) => (
+                            {filteredFiles.map((file, index) => (
                                 <button
                                     key={index}
                                     onClick={() => {
@@ -699,11 +1161,22 @@ const Project = () => {
                                         })
                                     }}
                                     className={clsx(
-                                        "w-full text-left p-2 px-3 rounded-lg flex items-center gap-2 mb-1 transition-all",
+                                        "w-full text-left p-2 px-3 rounded-lg flex flex-col mb-1 transition-all group", // Changed to flex-col for date display
                                         currentFile === file ? "bg-slate-800 text-white" : "text-slate-400 hover:bg-slate-900 hover:text-slate-200"
                                     )}>
-                                    <FileCode className="w-4 h-4 opacity-70" />
-                                    <span className='text-sm truncate'>{file}</span>
+                                    <div className="flex items-center gap-2 w-full">
+                                        <FileCode className="w-4 h-4 opacity-70 shrink-0" />
+                                        <span className='text-sm truncate flex-grow'>{file}</span>
+                                    </div>
+                                    {/* Timestamp */}
+                                    {fileTree[file].lastModified && (
+                                        <div className="flex items-center gap-1 ml-6 mt-0.5 opacity-50 text-[10px]">
+                                            <Clock className="w-3 h-3" />
+                                            <span>
+                                                {format(new Date(fileTree[file].lastModified), 'MMM d, h:mm a')}
+                                            </span>
+                                        </div>
+                                    )}
                                     {/* Active Users Avatars */}
                                     <div className="flex -space-x-2 ml-auto">
                                         {Object.values(activeUsers)
@@ -762,9 +1235,9 @@ const Project = () => {
                                     });
                                     setMessages(prev => [...prev, { sender: user, message: prompt }]);
                                 }}
-                                className="mr-2 px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-lg shadow-purple-500/20"
+                                className="mr-2 px-6 h-9 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white rounded-full text-sm font-semibold flex items-center justify-center gap-2 shadow-lg shadow-purple-900/40 transition-all whitespace-nowrap"
                             >
-                                <MessageSquare className="w-3 h-3" />
+                                <MessageSquare className="w-4 h-4" />
                                 Ask AI
                             </motion.button>
 
@@ -774,12 +1247,14 @@ const Project = () => {
                                     whileHover={{ scale: 1.05 }}
                                     whileTap={{ scale: 0.95 }}
                                     onClick={handleRun}
-                                    disabled={isRunning || !webContainer}
+                                    disabled={!webContainer}
                                     className={clsx(
                                         "px-6 py-2 rounded-full font-semibold text-sm flex items-center gap-2 shadow-lg transition-all",
-                                        (isRunning || !webContainer)
+                                        (!webContainer)
                                             ? "bg-slate-700 text-slate-400 cursor-not-allowed"
-                                            : "bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-blue-900/40"
+                                            : isRunning && runStatus === 'running'
+                                                ? "bg-red-600 hover:bg-red-500 text-white shadow-red-900/40"
+                                                : "bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-blue-900/40"
                                     )}
                                 >
                                     {!webContainer ? (
@@ -787,12 +1262,17 @@ const Project = () => {
                                             <Loader2 className="w-4 h-4 animate-spin" />
                                             Booting...
                                         </>
-                                    ) : isRunning ? (
+                                    ) : (isRunning && runStatus !== 'running') ? (
                                         <>
                                             <Loader2 className="w-4 h-4 animate-spin" />
                                             {runStatus === 'mounting' ? 'Mounting...' :
                                                 runStatus === 'installing' ? 'Installing...' :
                                                     runStatus === 'starting' ? 'Starting...' : 'Loading...'}
+                                        </>
+                                    ) : (isRunning && runStatus === 'running') ? (
+                                        <>
+                                            <div className="w-3 h-3 bg-white rounded-sm" />
+                                            Stop
                                         </>
                                     ) : (
                                         <>
@@ -801,6 +1281,79 @@ const Project = () => {
                                         </>
                                     )}
                                 </motion.button>
+
+                                <motion.button
+                                    whileHover={{ scale: 1.05 }}
+                                    whileTap={{ scale: 0.95 }}
+                                    onClick={handleAnalyzeCode}
+                                    disabled={isAnalyzing}
+                                    className="px-4 py-2 rounded-full font-semibold text-sm flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg shadow-emerald-900/40 transition-all"
+                                >
+                                    {isAnalyzing ? (
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                    ) : (
+                                        <Brain className="w-4 h-4" />
+                                    )}
+                                    {isAnalyzing ? "Analyzing..." : "Review"}
+                                </motion.button>
+                                <button
+                                    onClick={() => {
+                                        const prompt = "@ai Regenerate server.js to explicitly serve all static files (index.html, project.html, etc) using app.use(express.static('.')).";
+                                        sendMessage('project-message', {
+                                            message: prompt,
+                                            sender: user
+                                        });
+                                        setMessages(prev => [...prev, { sender: user, message: prompt }]);
+                                        setIsAiThinking(true);
+                                    }}
+                                    className="p-2 hover:bg-slate-800 text-slate-400 hover:text-white rounded-full transition-colors"
+                                    title="Fix Server (404 Error)"
+                                >
+                                    <Shield className="w-5 h-5" />
+                                </button>
+                                <button
+                                    onClick={downloadFile}
+                                    className="p-2 hover:bg-slate-800 text-slate-400 hover:text-white rounded-full transition-colors"
+                                    title="Download File"
+                                >
+                                    <Download className="w-5 h-5" />
+                                </button>
+                                <div className="relative">
+                                    <button
+                                        onClick={() => setIsShareMenuOpen(!isShareMenuOpen)}
+                                        className="p-2 hover:bg-slate-800 text-slate-400 hover:text-white rounded-full transition-colors"
+                                        title="Share Options"
+                                    >
+                                        <Share2 className="w-5 h-5" />
+                                    </button>
+                                    {isShareMenuOpen && (
+                                        <div className="absolute right-0 top-full mt-2 w-48 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden">
+                                            <div className="p-1 flex flex-col">
+                                                <button
+                                                    onClick={shareToWhatsApp}
+                                                    className="flex items-center gap-3 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-green-400 rounded-lg transition-colors text-left"
+                                                >
+                                                    <MessageCircle className="w-4 h-4" />
+                                                    WhatsApp
+                                                </button>
+                                                <button
+                                                    onClick={shareToMail}
+                                                    className="flex items-center gap-3 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-blue-400 rounded-lg transition-colors text-left"
+                                                >
+                                                    <Mail className="w-4 h-4" />
+                                                    Email
+                                                </button>
+                                                <button
+                                                    onClick={copyToClipboard}
+                                                    className="flex items-center gap-3 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg transition-colors text-left border-t border-slate-800 mt-1 pt-2"
+                                                >
+                                                    <Copy className="w-4 h-4" />
+                                                    Copy Code
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         </div>
 
@@ -818,15 +1371,18 @@ const Project = () => {
                                                 const ft = {
                                                     ...fileTree,
                                                     [currentFile]: {
+                                                        ...fileTree[currentFile],
                                                         file: {
+                                                            ...fileTree[currentFile].file,
                                                             contents: updatedContent
-                                                        }
+                                                        },
+                                                        lastModified: new Date().toISOString()
                                                     }
                                                 }
                                                 setFileTree(ft)
                                                 saveFileTree(ft)
                                             }}
-                                            dangerouslySetInnerHTML={{ __html: hljs.highlight('javascript', fileTree[currentFile].file.contents).value }}
+                                            dangerouslySetInnerHTML={{ __html: hljs.highlight('javascript', fileTree[currentFile]?.file?.contents || '').value }}
                                             style={{
                                                 whiteSpace: 'pre-wrap',
                                                 display: 'block',
@@ -875,13 +1431,23 @@ const Project = () => {
                                         <label htmlFor="pretty-print" className="text-xs text-slate-400 cursor-pointer select-none">Pretty-print</label>
                                     </div>
                                 </div>
-                                <button
-                                    onClick={() => setTerminalOutput([])}
-                                    className="text-slate-500 hover:text-red-400 text-xs transition-colors flex items-center gap-1"
-                                >
-                                    <X className="w-3 h-3" />
-                                    Clear
-                                </button>
+                                <div className="flex items-center gap-3">
+                                    <button
+                                        onClick={openSmartFix}
+                                        className="text-amber-400 hover:text-amber-300 text-xs transition-colors flex items-center gap-1 bg-amber-500/10 px-2 py-1 rounded border border-amber-500/20"
+                                        title="Auto-fix errors using AI/History"
+                                    >
+                                        <Sparkles className="w-3 h-3" />
+                                        Smart Fix
+                                    </button>
+                                    <button
+                                        onClick={() => setTerminalOutput([])}
+                                        className="text-slate-500 hover:text-red-400 text-xs transition-colors flex items-center gap-1"
+                                    >
+                                        <X className="w-3 h-3" />
+                                        Clear
+                                    </button>
+                                </div>
                             </div>
                             <div className="flex-grow overflow-auto p-3 font-mono text-xs text-slate-300 custom-scrollbar">
                                 <pre className="whitespace-pre-wrap font-[Consolas,Monaco,'Courier New',monospace]">
@@ -938,6 +1504,22 @@ const Project = () => {
                                     className="p-1.5 hover:bg-slate-800 rounded-md text-slate-400 transition-colors"
                                 >
                                     <RotateCcw className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        setIframeUrl(null);
+                                        setIsRunning(false);
+                                        setRunStatus(null);
+                                        if (runProcess) {
+                                            runProcess.kill();
+                                            setRunProcess(null);
+                                            setTerminalOutput(prev => [...prev, "Process stopped by user."]);
+                                        }
+                                    }}
+                                    className="p-1.5 hover:bg-slate-800 rounded-md text-red-500 hover:text-red-400 transition-colors"
+                                    title="Stop Server & Close Preview"
+                                >
+                                    <X className="w-3.5 h-3.5" />
                                 </button>
                             </div>
                             <iframe
@@ -1194,6 +1776,257 @@ const Project = () => {
                     </motion.div>
                 )}
             </AnimatePresence>
+
+            {/* AI Feedback Modal */}
+            <AnimatePresence>
+                {isFeedbackModalOpen && feedbackData && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60]"
+                    >
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            className="bg-slate-900 border border-slate-700 p-6 rounded-2xl w-[500px] shadow-2xl relative flex flex-col gap-4"
+                        >
+                            <header className='flex justify-between items-center border-b border-slate-800 pb-4'>
+                                <h2 className='text-xl font-bold text-white flex items-center gap-2'>
+                                    <Brain className="w-6 h-6 text-emerald-500" />
+                                    AI Code Review
+                                </h2>
+                                <button onClick={() => setIsFeedbackModalOpen(false)} className='p-2 hover:bg-slate-800 rounded-full transition-colors'>
+                                    <X className="w-5 h-5 text-slate-400" />
+                                </button>
+                            </header>
+
+                            {/* Language Toggle for Code Review */}
+                            <div className="flex justify-center mb-2">
+                                <div className="bg-slate-950 p-1 rounded-lg border border-slate-800 flex gap-1">
+                                    <button
+                                        onClick={() => handleAnalyzeCode('English')}
+                                        className={clsx(
+                                            "px-4 py-1.5 rounded-md text-xs font-medium transition-all",
+                                            reviewLanguage === 'English'
+                                                ? "bg-blue-600 text-white shadow-lg shadow-blue-500/20"
+                                                : "text-slate-400 hover:text-white hover:bg-slate-800"
+                                        )}
+                                    >
+                                        English
+                                    </button>
+                                    <button
+                                        onClick={() => handleAnalyzeCode('Hinglish')}
+                                        className={clsx(
+                                            "px-4 py-1.5 rounded-md text-xs font-medium transition-all",
+                                            reviewLanguage === 'Hinglish'
+                                                ? "bg-emerald-600 text-white shadow-lg shadow-emerald-500/20"
+                                                : "text-slate-400 hover:text-white hover:bg-slate-800"
+                                        )}
+                                    >
+                                        Hinglish (Bhai Style)
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="flex flex-col gap-4">
+                                <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700 flex items-center justify-between">
+                                    <span className="text-slate-400 text-sm font-medium">Difficulty Rating</span>
+                                    <span className={clsx(
+                                        "px-3 py-1 rounded-full text-sm font-bold border",
+                                        feedbackData.rating === 'Beginner' ? "bg-green-500/20 text-green-400 border-green-500/30" :
+                                            feedbackData.rating === 'Intermediate' ? "bg-yellow-500/20 text-yellow-400 border-yellow-500/30" :
+                                                "bg-red-500/20 text-red-400 border-red-500/30"
+                                    )}>
+                                        {feedbackData.rating}
+                                    </span>
+                                </div>
+
+                                <div>
+                                    <h3 className="text-sm font-bold text-slate-300 mb-3 flex items-center gap-2">
+                                        <Lightbulb className="w-4 h-4 text-yellow-500" />
+                                        Improvement Tips
+                                    </h3>
+                                    <ul className="space-y-3">
+                                        {feedbackData.tips.map((tip, i) => (
+                                            <li key={i} className="flex gap-3 text-sm text-slate-300 bg-slate-950/50 p-3 rounded-lg border border-slate-800/50">
+                                                <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                                                <span>{tip}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            </div>
+
+                            <button
+                                onClick={() => setIsFeedbackModalOpen(false)}
+                                className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl transition-colors font-medium mt-2"
+                            >
+                                Close
+                            </button>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+            {/* Feature 2: Settings Modal */}
+            <AnimatePresence>
+                {isSettingsModalOpen && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[70]"
+                    >
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            className="bg-slate-900 border border-slate-700 p-6 rounded-2xl w-[400px] shadow-2xl relative"
+                        >
+                            <header className='flex justify-between items-center mb-6'>
+                                <h2 className='text-xl font-bold text-white flex items-center gap-2'>
+                                    <Settings className="w-5 h-5 text-blue-500" />
+                                    AI Preferences
+                                </h2>
+                                <button onClick={() => setIsSettingsModalOpen(false)} className='p-2 hover:bg-slate-800 rounded-full transition-colors'>
+                                    <X className="w-5 h-5 text-slate-400" />
+                                </button>
+                            </header>
+                            <form onSubmit={handleSavePreferences} className="space-y-4">
+                                <div>
+                                    <label className="text-sm text-slate-400 block mb-2">Preferred Stack</label>
+                                    <select
+                                        value={preferences.preferredStack}
+                                        onChange={e => setPreferences({ ...preferences, preferredStack: e.target.value })}
+                                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:border-blue-500 outline-none"
+                                    >
+                                        <option value="React/Node">React & Node.js (Default)</option>
+                                        <option value="Vanilla JS">Vanilla HTML/JS</option>
+                                        <option value="Vue">Vue.js</option>
+                                        <option value="Python/Flask">Python/Flask</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-sm text-slate-400 block mb-2">Code Style</label>
+                                    <select
+                                        value={preferences.codeStyle}
+                                        onChange={e => setPreferences({ ...preferences, codeStyle: e.target.value })}
+                                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:border-blue-500 outline-none"
+                                    >
+                                        <option value="Standard">Standard (Balanced)</option>
+                                        <option value="Concise">Concise (Minimal comments)</option>
+                                        <option value="Detailed">Detailed (Educational)</option>
+                                    </select>
+                                </div>
+                                <button type="submit" className="w-full bg-blue-600 hover:bg-blue-500 text-white rounded-lg py-2 font-medium flex items-center justify-center gap-2">
+                                    <Save className="w-4 h-4" /> Save Preferences
+                                </button>
+                            </form>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Feature 3: Smart Fix Modal */}
+            <AnimatePresence>
+                {isSmartFixOpen && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[70]"
+                    >
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            className="bg-slate-900 border border-slate-700 p-6 rounded-2xl w-[500px] shadow-2xl relative flex flex-col gap-4 max-h-[80vh]"
+                        >
+                            <header className='flex justify-between items-center border-b border-slate-800 pb-4'>
+                                <h2 className='text-xl font-bold text-white flex items-center gap-2'>
+                                    <Sparkles className="w-5 h-5 text-amber-500" />
+                                    Smart Fix
+                                </h2>
+                                <button onClick={() => setIsSmartFixOpen(false)} className='p-2 hover:bg-slate-800 rounded-full transition-colors'>
+                                    <X className="w-5 h-5 text-slate-400" />
+                                </button>
+                            </header>
+
+                            {/* Language Toggle */}
+                            <div className="flex justify-center mb-2">
+                                <div className="bg-slate-950 p-1 rounded-lg border border-slate-800 flex gap-1">
+                                    <button
+                                        onClick={() => handleSmartFix('English')}
+                                        className={clsx(
+                                            "px-4 py-1.5 rounded-md text-xs font-medium transition-all",
+                                            smartFixLanguage === 'English'
+                                                ? "bg-blue-600 text-white shadow-lg shadow-blue-500/20"
+                                                : "text-slate-400 hover:text-white hover:bg-slate-800"
+                                        )}
+                                    >
+                                        English
+                                    </button>
+                                    <button
+                                        onClick={() => handleSmartFix('Hinglish')}
+                                        className={clsx(
+                                            "px-4 py-1.5 rounded-md text-xs font-medium transition-all",
+                                            smartFixLanguage === 'Hinglish'
+                                                ? "bg-amber-600 text-white shadow-lg shadow-amber-500/20"
+                                                : "text-slate-400 hover:text-white hover:bg-slate-800"
+                                        )}
+                                    >
+                                        Hinglish (Bhai Style)
+                                    </button>
+                                </div>
+                            </div>
+
+                            {!fixResult ? (
+                                <div className="flex flex-col gap-4">
+                                    <label className="text-sm text-slate-400">Describe the error or paste the log:</label>
+                                    <textarea
+                                        value={fixErrorInput}
+                                        onChange={(e) => setFixErrorInput(e.target.value)}
+                                        className="w-full h-32 bg-slate-950 border border-slate-700 rounded-lg p-3 text-sm text-red-300 font-mono focus:border-amber-500 outline-none resize-none"
+                                        placeholder="ReferenceError: x is not defined..."
+                                    ></textarea>
+                                    <button
+                                        onClick={() => handleSmartFix()}
+                                        disabled={isFixing}
+                                        className="w-full bg-amber-600 hover:bg-amber-500 text-white rounded-lg py-2 font-medium flex items-center justify-center gap-2"
+                                    >
+                                        {isFixing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                                        {isFixing ? "Searching Memory & AI..." : "Find Fix"}
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="flex flex-col gap-4 overflow-y-auto">
+                                    <div className="bg-slate-800/50 p-3 rounded-lg border border-slate-700 flex items-center justify-between">
+                                        <span className="text-slate-400 text-xs">Source</span>
+                                        <span className={clsx(
+                                            "px-2 py-1 rounded text-xs font-bold border",
+                                            fixResult.source.includes("Memory") ? "bg-purple-500/20 text-purple-300 border-purple-500/30" : "bg-blue-500/20 text-blue-300 border-blue-500/30"
+                                        )}>
+                                            {fixResult.source}
+                                        </span>
+                                    </div>
+                                    <div className="bg-slate-950 p-4 rounded-lg border border-slate-800 text-slate-200 text-sm whitespace-pre-wrap font-mono">
+                                        {fixResult.fix}
+                                    </div>
+                                    <button
+                                        onClick={() => { setFixResult(null); setFixErrorInput(''); }}
+                                        className="w-full bg-slate-800 hover:bg-slate-700 text-white rounded-lg py-2 font-medium"
+                                    >
+                                        Fix Another
+                                    </button>
+                                </div>
+                            )}
+
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
             {/* TOAST NOTIFICATION */}
             <AnimatePresence>
                 {toast.show && (
