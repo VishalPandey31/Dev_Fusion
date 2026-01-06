@@ -2,6 +2,7 @@ import projectModel from '../models/project.model.js';
 import * as projectService from '../services/project.service.js';
 import userModel from '../models/user.model.js';
 import sessionModel from '../models/session.model.js';
+import messageModel from '../models/message.model.js';
 import { validationResult } from 'express-validator';
 
 // ===============================
@@ -134,16 +135,18 @@ export const inviteMemberController = async (req, res) => {
 
         // 1. Create User (if not exists)
         let user = await userModel.findOne({ email });
-        if (user) return res.status(400).json({ error: "User already exists. Cannot re-create." });
 
-        const hashedPassword = await userModel.hashPassword(password);
-        user = await userModel.create({
-            email,
-            password: hashedPassword,
-            isApproved: false, // Legacy field
-            status: 'PENDING', // New Strict Field
-            isAdmin: false
-        });
+        if (!user) {
+            const hashedPassword = await userModel.hashPassword(password);
+            user = await userModel.create({
+                email,
+                password: hashedPassword,
+                isApproved: false, // Legacy field
+                status: 'PENDING', // New Strict Field
+                isAdmin: false
+            });
+        }
+
 
         // 2. Add to Project Pending List
         const project = await projectModel.findById(projectId);
@@ -280,5 +283,104 @@ export const getProjectMessages = async (req, res) => {
     } catch (err) {
         console.log(err);
         return res.status(400).json({ error: err.message });
+    }
+};
+
+export const deleteProject = async (req, res) => {
+    try {
+        const { projectId } = req.params;
+
+        // Note: Project existence and ownership/admin permission should ideally be checked here or in service.
+        // Assuming checkAdmin middleware protects this route.
+
+        const project = await projectService.deleteProjectById({ projectId });
+
+        if (!project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        return res.status(200).json({ message: 'Project deleted successfully' });
+
+    } catch (err) {
+        console.log(err);
+        return res.status(500).json({ error: err.message });
+    }
+};
+
+export const searchProject = async (req, res) => {
+    try {
+        const { projectId, query, type, date } = req.query;
+
+        if (!projectId) {
+            return res.status(400).json({ error: 'Project ID is required' });
+        }
+
+        if (!query && !date) {
+            return res.status(400).json({ error: 'Query or Date is required' });
+        }
+
+        let results = {
+            files: [],
+            chats: []
+        };
+
+        // 1. Search Files
+        if (!type || type === 'file' || type === 'all') {
+            const project = await projectModel.findById(projectId);
+            if (project && project.fileTree) {
+                const searchFiles = (tree, path = '') => {
+                    for (const key in tree) {
+                        const currentPath = path ? `${path}/${key}` : key;
+                        const item = tree[key];
+
+                        // Check if filename matches query
+                        if (query && key.toLowerCase().includes(query.toLowerCase())) {
+                            results.files.push({
+                                name: key,
+                                path: currentPath,
+                                type: item.file ? 'file' : 'directory'
+                            });
+                        }
+
+                        // Recursive for directories
+                        if (item.directory) {
+                            searchFiles(item.directory, currentPath);
+                        } else if (typeof item === 'object' && !item.file && !item.contents) {
+                            searchFiles(item, currentPath);
+                        }
+                    }
+                };
+                searchFiles(project.fileTree);
+            }
+        }
+
+        // 2. Search Chat
+        if (!type || type === 'chat' || type === 'all') {
+            let filter = { projectId };
+
+            if (query) {
+                filter.message = { $regex: query, $options: 'i' };
+            }
+
+            if (date) {
+                const searchDate = new Date(date);
+                const searchDateStart = new Date(searchDate.setHours(0, 0, 0, 0));
+                const searchDateEnd = new Date(searchDate.setHours(23, 59, 59, 999));
+
+                filter.timestamp = {
+                    $gte: searchDateStart,
+                    $lte: searchDateEnd
+                };
+            }
+
+            const messages = await messageModel.find(filter).populate('sender', 'email').sort({ timestamp: -1 });
+            results.chats = messages;
+        }
+
+        res.status(200).json({ results });
+
+    } catch (err) {
+        console.log(err);
+        res.status(400).json({ error: err.message });
     }
 };

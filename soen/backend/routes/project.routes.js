@@ -9,6 +9,7 @@ const router = Router();
 router.post(
     '/create',
     authMiddleWare.authUser,
+    checkAdmin,
     body('name').isString().withMessage('Name is required'),
     projectController.createProject
 );
@@ -17,6 +18,13 @@ router.get(
     '/all',
     authMiddleWare.authUser,
     projectController.getAllProject
+);
+
+router.delete(
+    '/delete/:projectId',
+    authMiddleWare.authUser,
+    checkAdmin,
+    projectController.deleteProject
 );
 
 router.put(
@@ -87,6 +95,12 @@ router.get(
     '/get-messages/:projectId',
     authMiddleWare.authUser,
     projectController.getProjectMessages
-)
+);
+
+router.get(
+    '/search',
+    authMiddleWare.authUser,
+    projectController.searchProject
+);
 
 export default router;

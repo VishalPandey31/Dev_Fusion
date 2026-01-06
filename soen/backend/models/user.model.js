@@ -41,6 +41,11 @@ const userSchema = new mongoose.Schema({
     isVerifiedAdmin: {
         type: Boolean,
         default: false
+    },
+    preferences: {
+        preferredStack: { type: String, default: 'React/Node' },
+        codeStyle: { type: String, default: 'Standard' }, // e.g. 'Standard', 'Concise', 'Detailed'
+        language: { type: String, default: 'English' } // 'English', 'Hinglish'
     }
 })
 

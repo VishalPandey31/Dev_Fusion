@@ -1,0 +1,151 @@
+AVAILABLE MODELS:
+Name: models/embedding-gecko-001
+SupportedMethods: ["embedText","countTextTokens"]
+-------------------
+Name: models/gemini-2.5-flash
+SupportedMethods: ["generateContent","countTokens","createCachedContent","batchGenerateContent"]
+-------------------
+Name: models/gemini-2.5-pro
+SupportedMethods: ["generateContent","countTokens","createCachedContent","batchGenerateContent"]
+-------------------
+Name: models/gemini-2.0-flash-exp
+SupportedMethods: ["generateContent","countTokens","bidiGenerateContent"]
+-------------------
+Name: models/gemini-2.0-flash
+SupportedMethods: ["generateContent","countTokens","createCachedContent","batchGenerateContent"]
+-------------------
+Name: models/gemini-2.0-flash-001
+SupportedMethods: ["generateContent","countTokens","createCachedContent","batchGenerateContent"]
+-------------------
+Name: models/gemini-2.0-flash-exp-image-generation
+SupportedMethods: ["generateContent","countTokens","bidiGenerateContent"]
+-------------------
+Name: models/gemini-2.0-flash-lite-001
+SupportedMethods: ["generateContent","countTokens","createCachedContent","batchGenerateContent"]
+-------------------
+Name: models/gemini-2.0-flash-lite
+SupportedMethods: ["generateContent","countTokens","createCachedContent","batchGenerateContent"]
+-------------------
+Name: models/gemini-2.0-flash-lite-preview-02-05
+SupportedMethods: ["generateContent","countTokens","createCachedContent","batchGenerateContent"]
+-------------------
+Name: models/gemini-2.0-flash-lite-preview
+SupportedMethods: ["generateContent","countTokens","createCachedContent","batchGenerateContent"]
+-------------------
+Name: models/gemini-exp-1206
+SupportedMethods: ["generateContent","countTokens","createCachedContent","batchGenerateContent"]
+-------------------
+Name: models/gemini-2.5-flash-preview-tts
+SupportedMethods: ["countTokens","generateContent"]
+-------------------
+Name: models/gemini-2.5-pro-preview-tts
+SupportedMethods: ["countTokens","generateContent","batchGenerateContent"]
+-------------------
+Name: models/gemma-3-1b-it
+SupportedMethods: ["generateContent","countTokens"]
+-------------------
+Name: models/gemma-3-4b-it
+SupportedMethods: ["generateContent","countTokens"]
+-------------------
+Name: models/gemma-3-12b-it
+SupportedMethods: ["generateContent","countTokens"]
+-------------------
+Name: models/gemma-3-27b-it
+SupportedMethods: ["generateContent","countTokens"]
+-------------------
+Name: models/gemma-3n-e4b-it
+SupportedMethods: ["generateContent","countTokens"]
+-------------------
+Name: models/gemma-3n-e2b-it
+SupportedMethods: ["generateContent","countTokens"]
+-------------------
+Name: models/gemini-flash-latest
+SupportedMethods: ["generateContent","countTokens","createCachedContent","batchGenerateContent"]
+-------------------
+Name: models/gemini-flash-lite-latest
+SupportedMethods: ["generateContent","countTokens","createCachedContent","batchGenerateContent"]
+-------------------
+Name: models/gemini-pro-latest
+SupportedMethods: ["generateContent","countTokens","createCachedContent","batchGenerateContent"]
+-------------------
+Name: models/gemini-2.5-flash-lite
+SupportedMethods: ["generateContent","countTokens","createCachedContent","batchGenerateContent"]
+-------------------
+Name: models/gemini-2.5-flash-image-preview
+SupportedMethods: ["generateContent","countTokens","batchGenerateContent"]
+-------------------
+Name: models/gemini-2.5-flash-image
+SupportedMethods: ["generateContent","countTokens","batchGenerateContent"]
+-------------------
+Name: models/gemini-2.5-flash-preview-09-2025
+SupportedMethods: ["generateContent","countTokens","createCachedContent","batchGenerateContent"]
+-------------------
+Name: models/gemini-2.5-flash-lite-preview-09-2025
+SupportedMethods: ["generateContent","countTokens","createCachedContent","batchGenerateContent"]
+-------------------
+Name: models/gemini-3-pro-preview
+SupportedMethods: ["generateContent","countTokens","createCachedContent","batchGenerateContent"]
+-------------------
+Name: models/gemini-3-flash-preview
+SupportedMethods: ["generateContent","countTokens","createCachedContent","batchGenerateContent"]
+-------------------
+Name: models/gemini-3-pro-image-preview
+SupportedMethods: ["generateContent","countTokens","batchGenerateContent"]
+-------------------
+Name: models/nano-banana-pro-preview
+SupportedMethods: ["generateContent","countTokens","batchGenerateContent"]
+-------------------
+Name: models/gemini-robotics-er-1.5-preview
+SupportedMethods: ["generateContent","countTokens"]
+-------------------
+Name: models/gemini-2.5-computer-use-preview-10-2025
+SupportedMethods: ["generateContent","countTokens"]
+-------------------
+Name: models/deep-research-pro-preview-12-2025
+SupportedMethods: ["generateContent","countTokens"]
+-------------------
+Name: models/embedding-001
+SupportedMethods: ["embedContent"]
+-------------------
+Name: models/text-embedding-004
+SupportedMethods: ["embedContent"]
+-------------------
+Name: models/gemini-embedding-exp-03-07
+SupportedMethods: ["embedContent","countTextTokens","countTokens"]
+-------------------
+Name: models/gemini-embedding-exp
+SupportedMethods: ["embedContent","countTextTokens","countTokens"]
+-------------------
+Name: models/gemini-embedding-001
+SupportedMethods: ["embedContent","countTextTokens","countTokens","asyncBatchEmbedContent"]
+-------------------
+Name: models/aqa
+SupportedMethods: ["generateAnswer"]
+-------------------
+Name: models/imagen-4.0-generate-preview-06-06
+SupportedMethods: ["predict"]
+-------------------
+Name: models/imagen-4.0-ultra-generate-preview-06-06
+SupportedMethods: ["predict"]
+-------------------
+Name: models/imagen-4.0-generate-001
+SupportedMethods: ["predict"]
+-------------------
+Name: models/imagen-4.0-ultra-generate-001
+SupportedMethods: ["predict"]
+-------------------
+Name: models/imagen-4.0-fast-generate-001
+SupportedMethods: ["predict"]
+-------------------
+Name: models/veo-2.0-generate-001
+SupportedMethods: ["predictLongRunning"]
+-------------------
+Name: models/veo-3.0-generate-001
+SupportedMethods: ["predictLongRunning"]
+-------------------
+Name: models/veo-3.0-fast-generate-001
+SupportedMethods: ["predictLongRunning"]
+-------------------
+Name: models/veo-3.1-generate-preview
+SupportedMethods: ["predictLongRunning"]
+-------------------

@@ -40,12 +40,15 @@ router.put('/promote',
     userController.promoteUserController
 );
 
+
 router.put('/approve',
     authMiddleware.authUser,
     adminMiddleware.checkAdmin,
     body('userId').isString().withMessage('User ID is required'),
     userController.approveUserController
 );
+
+router.put('/preferences', authMiddleware.authUser, userController.updatePreferencesController);
 
 
 export default router;
