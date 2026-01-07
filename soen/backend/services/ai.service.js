@@ -42,6 +42,20 @@ function getModel() {
         SMART RUN: The environment runs files based on the 'Run' button. Ensure your code is runnable immediately.
 
 
+
+        EXAMPLE OF CORRECT ORDERING:
+        \`\`\`javascript
+        const express = require('express');
+        const app = express();
+        
+        // 1. Define API routes FIRST
+        app.get('/', (req, res) => {
+            res.send('Hello World!');
+        });
+        
+        // 2. Define Static files LAST (so they don't override the root route)
+        app.use(express.static('.'));
+        \`\`\`
     
     Examples: 
     
