@@ -259,13 +259,12 @@ mongoose.connection.on('disconnected', () => {
 const connectDB = async () => {
     try {
         await mongoose.connect(mongoUri, {
-            serverSelectionTimeoutMS: 5000 // Keep this short for fail-fast
+            serverSelectionTimeoutMS: 5000
         });
         console.log('✅ MongoDB Connected');
-        startServer();
     } catch (err) {
         console.error('❌ MongoDB Connection Error:', err.message);
-        process.exit(1);
+        // Do NOT exit, keep server alive for logs
     }
 };
 
@@ -275,5 +274,8 @@ const startServer = () => {
     });
 };
 
+// Start Server FIRST to satisfy Cloud Run Health Check
+startServer();
+// Then try to connect
 connectDB();
 
