@@ -66,9 +66,19 @@ app.use('/ai', aiRoutes);
 app.use('/admin', adminRoutes);
 
 app.get('/test-db', (req, res) => {
+    const states = {
+        0: 'disconnected',
+        1: 'connected',
+        2: 'connecting',
+        3: 'disconnecting',
+        99: 'uninitialized',
+    };
     res.json({
         message: 'TEST ROUTE WORKING',
-        dbStatus: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected'
+        dbState: states[mongoose.connection.readyState] || 'unknown',
+        readyState: mongoose.connection.readyState,
+        host: mongoose.connection.host,
+        dbName: mongoose.connection.name
     });
 });
 
@@ -220,22 +230,50 @@ io.on('connection', async (socket) => {
     });
 });
 
+
 /* =======================
    SERVER START (CLOUD RUN)
 ======================= */
+// MongoDB connect BEFORE server starts
 const PORT = process.env.PORT || 3000;
+const mongoUri = process.env.MONGODB_URI;
 
-server.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on port ${PORT}`);
+if (!mongoUri) {
+    console.error('⚠️ MONGODB_URI is missing! Server cannot start.');
+    process.exit(1);
+}
 
-    // MongoDB connect AFTER server is live
-    const mongoUri = process.env.MONGODB_URI;
-    if (!mongoUri) {
-        console.error('⚠️ MONGODB_URI is missing!');
-        return;
-    }
-
-    mongoose.connect(mongoUri)
-        .then(() => console.log('✅ MongoDB Connected'))
-        .catch(err => console.error('❌ MongoDB Connection Error:', err.message));
+// Connection Events
+mongoose.connection.on('connected', () => {
+    console.log('Mongoose connected to DB Cluster');
 });
+
+mongoose.connection.on('error', (err) => {
+    console.error('Mongoose connection error:', err.message);
+});
+
+mongoose.connection.on('disconnected', () => {
+    console.log('Mongoose Disconnected');
+});
+
+const connectDB = async () => {
+    try {
+        await mongoose.connect(mongoUri, {
+            serverSelectionTimeoutMS: 5000 // Keep this short for fail-fast
+        });
+        console.log('✅ MongoDB Connected');
+        startServer();
+    } catch (err) {
+        console.error('❌ MongoDB Connection Error:', err.message);
+        process.exit(1);
+    }
+};
+
+const startServer = () => {
+    server.listen(PORT, '0.0.0.0', () => {
+        console.log(`Server running on port ${PORT}`);
+    });
+};
+
+connectDB();
+

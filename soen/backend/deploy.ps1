@@ -38,15 +38,28 @@ gcloud config set project $ProjectId
 Write-Host "Deploying..." -ForegroundColor Cyan
 Write-Host "Command: gcloud run deploy backend --source . --region us-central1 --allow-unauthenticated --set-env-vars [HIDDEN]" -ForegroundColor DarkGray
 
-# Using Invoke-Expression or direct execution
-# Note: We use --source . so Google Cloud Build handles the Docker build remotely.
-# We map simple env vars. 
-# CAUTION: This creates a new revision with the env vars.
-$deployCmd = "gcloud run deploy backend --source . --region asia-south1 --allow-unauthenticated --set-env-vars ""$envString"""
+# Handle env vars with care.
+$envVars = @()
+foreach ($line in $envContent) {
+    if ($line -match "^[^#]*=.*") {
+        $envVars += $line.Trim()
+    }
+}
+$envString = $envVars -join ","
 
-Invoke-Expression $deployCmd
+# Construct arguments safely
+$gcloudArgs = @(
+    "run", "deploy", "backend",
+    "--source", ".",
+    "--region", "asia-south1",
+    "--allow-unauthenticated",
+    "--set-env-vars", "$envString"
+)
 
-if ($?) {
+Write-Host "Executing gcloud run deploy..." -ForegroundColor Cyan
+& gcloud $gcloudArgs
+
+if ($LASTEXITCODE -eq 0) {
     Write-Host "✅ Deployment Complete!" -ForegroundColor Green
 }
 else {

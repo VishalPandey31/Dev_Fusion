@@ -20,7 +20,7 @@ const Login = () => {
         setError('')
 
         axios.post('/users/login', {
-            email,
+            email: email.trim(),
             password
         }).then((res) => {
             localStorage.setItem('token', res.data.token)
@@ -30,6 +30,7 @@ const Login = () => {
             console.error(err)
             const data = err.response?.data;
             let errorMsg = 'Login failed';
+
             if (data?.error) errorMsg = data.error;
             else if (data?.errors) {
                 if (Array.isArray(data.errors)) errorMsg = data.errors[0]?.msg || JSON.stringify(data.errors);
@@ -37,6 +38,12 @@ const Login = () => {
             } else if (data?.message) {
                 errorMsg = data.message;
             }
+
+            // Helpful fallback for status codes
+            if (err.response?.status === 400 && errorMsg === 'Login failed') {
+                errorMsg = "Invalid request. Please check your input.";
+            }
+
             setError(typeof errorMsg === 'object' ? JSON.stringify(errorMsg) : errorMsg);
             setIsLoading(false)
         })
