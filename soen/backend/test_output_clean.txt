@@ -1,0 +1,7 @@
+Testing Login against: https://backend-1041763297166.asia-south1.run.app
+Payload: {"email":"member1@gmail.com","password":"...."}
+Error Status: 401
+Error Data: {
+  "errors": "Invalid credentials"
+}
+Error Headers: {"x-powered-by":"Express","vary":"Origin","access-control-allow-credentials":"true","content-type":"application/json; charset=utf-8","etag":"W/\"20-JXFUO7ojosnc+sLpjW3ooXSxkHc\"","x-cloud-trace-context":"35afefd7fa4ea520f73e9d9baa227715","date":"Wed, 07 Jan 2026 17:52:16 GMT","server":"Google Frontend","content-length":"32","alt-svc":"h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"}

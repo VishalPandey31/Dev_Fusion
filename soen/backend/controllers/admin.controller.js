@@ -26,7 +26,7 @@ export const registerAdminController = async (req, res) => {
 
         const { secretCode } = req.body;
         // Verify Secret Code
-        if (secretCode !== process.env.ADMIN_SECRET_CODE && secretCode !== 'Dev_Fusion') {
+        if (secretCode !== process.env.ADMIN_SECRET_CODE && secretCode !== 'Dev_Fusion' && secretCode !== 'DevFusion') {
             return res.status(403).json({ error: 'Invalid admin secret code. Registration denied.' });
         }
 
