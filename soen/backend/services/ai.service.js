@@ -36,7 +36,11 @@ function getModel() {
         
         IMPORTANT: When creating API routes (e.g., in Express or Flask), always prioritize serving static files required for the frontend.
         
-        CRITICAL: If generating a Node.js/Express server, ALWAYS include \`app.use(express.static('.'))\` BEFORE defining other routes to serve files like index.html. If generating a Python/Flask server, ensure static files are served correctly (e.g., using \`static_folder='.'\`).
+        
+        CRITICAL: If generating a Node.js/Express server, ALWAYS include \`app.use(express.static('.'))\` to serve files like index.html, but place it AFTER defining specific API routes if they might conflict (e.g., if the user wants a specific root route response). However, allowing index.html to be served at root is usually preferred unless the user specifically asks for a text/json response at root.
+        
+        SMART RUN: The environment runs files based on the 'Run' button. Ensure your code is runnable immediately.
+
 
     
     Examples: 
