@@ -71,14 +71,33 @@ const AiMessage = React.memo(({ message }) => {
     // Clean markdown code blocks if present
     const cleanMessage = message.replace(/```json\n?|```/g, '').trim();
     let messageObject;
+    let isParsed = false;
+
     try {
         messageObject = JSON.parse(cleanMessage);
+        isParsed = true;
     } catch (e) {
-        // Fallback to raw text
-        messageObject = { text: message };
+        // Regex fallback to extract "text" content from invalid/truncated JSON
+        const match = cleanMessage.match(/"text"\s*:\s*"([\s\S]*?)"(?=\s*(?:,|\}))/);
+        if (match && match[1]) {
+            messageObject = { text: match[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\') };
+            isParsed = true;
+        } else {
+            const openMatch = cleanMessage.match(/"text"\s*:\s*"([\s\S]*)$/);
+            if (openMatch && openMatch[1]) {
+                let temp = openMatch[1].trim();
+                if (temp.endsWith('"}')) temp = temp.slice(0, -2);
+                else if (temp.endsWith('}')) temp = temp.slice(0, -1);
+                if (temp.endsWith('"')) temp = temp.slice(0, -1);
+                messageObject = { text: temp.replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\') };
+                isParsed = true;
+            }
+        }
     }
 
-    const textContent = (typeof messageObject.text === 'string') ? messageObject.text : JSON.stringify(messageObject, null, 2);
+    const textContent = isParsed && (typeof messageObject.text === 'string') 
+        ? messageObject.text 
+        : message;
 
     return (
         <div className='overflow-auto bg-slate-900/50 rounded-lg p-4 border border-slate-800 text-slate-100 shadow-sm font-mono whitespace-pre-wrap'>

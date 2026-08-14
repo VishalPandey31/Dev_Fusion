@@ -67,8 +67,10 @@ export const manageUserController = async (req, res) => {
 
         if (action === 'approve') {
             user.isApproved = true;
+            user.status = 'APPROVED';
         } else if (action === 'revoke' || action === 'block') {
             user.isApproved = false;
+            user.status = 'REJECTED';
         }
 
         await user.save();

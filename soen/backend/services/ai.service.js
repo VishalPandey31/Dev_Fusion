@@ -14,9 +14,9 @@ function getModel() {
     try {
         const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_KEY);
         model = genAI.getGenerativeModel({
-            model: "gemini-2.0-flash",
+            model: "gemini-2.5-flash",
             generationConfig: {
-                // responseMimeType: "application/json", 
+                responseMimeType: "application/json", 
                 temperature: 0.4,
             },
             systemInstruction: `You are Antigravity, an AI assistant inside Dev_Fusion.
@@ -159,11 +159,42 @@ export const generateResult = async (prompt) => {
     if (!aiModel) {
         throw new Error("AI features are currently unavailable (Key missing or initialization failed).");
     }
-    try {
-        const result = await aiModel.generateContent(prompt);
-        return result.response.text();
-    } catch (error) {
-        console.error("AI Service Generation Error:", error);
-        throw new Error(error.message || "AI Service Error");
+
+    const maxRetries = 3;
+
+    // Try primary model (gemini-2.5-flash) with retries
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            const result = await aiModel.generateContent(prompt);
+            return result.response.text();
+        } catch (error) {
+            console.error(`AI Service Error (attempt ${attempt}/${maxRetries}):`, error.message);
+            if (error.status === 503 && attempt < maxRetries) {
+                const delay = 1000 * attempt; // 1s, 2s, 3s
+                console.log(`Retrying in ${delay}ms...`);
+                await new Promise(r => setTimeout(r, delay));
+                continue;
+            }
+            // If all retries failed on primary, try fallback model
+            if (error.status === 503) {
+                console.log("Primary model overloaded. Trying fallback model: gemini-2.0-flash");
+                try {
+                    const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_KEY);
+                    const fallbackModel = genAI.getGenerativeModel({ 
+                        model: "gemini-2.0-flash",
+                        generationConfig: {
+                            responseMimeType: "application/json",
+                            temperature: 0.4
+                        }
+                    });
+                    const fallbackResult = await fallbackModel.generateContent(prompt);
+                    return fallbackResult.response.text();
+                } catch (fallbackError) {
+                    console.error("Fallback model also failed:", fallbackError.message);
+                    throw new Error("AI Service is temporarily unavailable. Please try again in a moment.");
+                }
+            }
+            throw new Error(error.message || "AI Service Error");
+        }
     }
 }

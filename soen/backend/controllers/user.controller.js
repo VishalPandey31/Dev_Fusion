@@ -279,6 +279,7 @@ export const approveUserController = async (req, res) => {
             return res.status(404).json({ error: 'User not found' });
         }
         user.isApproved = true;
+        user.status = 'APPROVED';
         await user.save();
         res.status(200).json({ message: `User ${user.email} approved successfully`, user });
     } catch (err) {
