@@ -44,7 +44,8 @@ app.use(cors({
     origin: [
         'http://localhost:5173',
         'https://devfusion-auto-8049.surge.sh',
-        'https://vishal-dev-fusion.surge.sh'
+        'https://vishal-dev-fusion.surge.sh',
+        'https://dev-fusion.surge.sh'
     ],
     credentials: true
 }));
