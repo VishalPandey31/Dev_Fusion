@@ -43,6 +43,8 @@ process.on('unhandledRejection', (reason, promise) => {
 app.use(cors({
     origin: [
         'http://localhost:5173',
+        'https://AiEngineer.surge.sh',
+        'https://aiengineer.surge.sh',
         'https://devfusion-auto-8049.surge.sh',
         'https://vishal-dev-fusion.surge.sh',
         'https://dev-fusion.surge.sh'
