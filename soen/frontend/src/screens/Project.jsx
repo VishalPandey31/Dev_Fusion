@@ -175,6 +175,7 @@ const Project = () => {
     const [onlineUsers, setOnlineUsers] = useState({}) // { userId: { email, isOnline, lastSeen } }
     const [contextMenu, setContextMenu] = useState(null) // { x, y, messageId, senderId }
     const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false)
+    const [lightboxImage, setLightboxImage] = useState(null) // for fullscreen image preview
     const [analyticsUsers, setAnalyticsUsers] = useState([])
 
 
@@ -522,6 +523,7 @@ const Project = () => {
     }
 
     const handleDeleteMessage = (messageId, deleteType) => {
+        if (!messageId) return // guard: don't delete if message has no DB id yet
         if (deleteType === 'forMe') {
             setMessages(prev => prev.filter(m => m._id !== messageId && m.localId !== messageId))
             sendMessage('delete-message', { messageId, deleteType: 'forMe', userId: user._id })
@@ -1133,6 +1135,7 @@ const Project = () => {
                                 )}
                                 onContextMenu={(e) => {
                                     e.preventDefault()
+                                    if (!msg._id) return // only DB-saved messages can be deleted
                                     setContextMenu({ x: e.clientX, y: e.clientY, messageId: msg._id, senderId: msg.sender._id })
                                 }}
                             >
@@ -1169,7 +1172,7 @@ const Project = () => {
                                                     src={msg.image}
                                                     alt="shared"
                                                     className="max-w-[220px] max-h-[220px] rounded-xl object-cover mb-1 cursor-pointer hover:opacity-90 transition-opacity"
-                                                    onClick={() => window.open(msg.image, '_blank')}
+                                                    onClick={() => setLightboxImage(msg.image)}
                                                 />
                                             )}
                                             {msg.message && <p>{msg.message}</p>}
@@ -2382,6 +2385,35 @@ const Project = () => {
                                 <Wifi className="w-4 h-4" /> Refresh Status
                             </button>
                         </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* IMAGE LIGHTBOX MODAL */}
+            <AnimatePresence>
+                {lightboxImage && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 backdrop-blur-sm"
+                        onClick={() => setLightboxImage(null)}
+                    >
+                        <motion.img
+                            initial={{ scale: 0.85, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.85, opacity: 0 }}
+                            src={lightboxImage}
+                            alt="Preview"
+                            className="max-w-[90vw] max-h-[90vh] rounded-2xl shadow-2xl object-contain"
+                            onClick={(e) => e.stopPropagation()}
+                        />
+                        <button
+                            onClick={() => setLightboxImage(null)}
+                            className="absolute top-5 right-5 w-10 h-10 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+                        >
+                            <X className="w-5 h-5" />
+                        </button>
                     </motion.div>
                 )}
             </AnimatePresence>

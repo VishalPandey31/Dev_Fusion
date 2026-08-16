@@ -228,7 +228,8 @@ export const getProjectMessages = async ({ projectId }) => {
     }
 
     const messages = await messageModel.find({
-        projectId
+        projectId,
+        deletedForEveryone: { $ne: true }
     }).sort({ timestamp: 1 });
 
     return messages;
