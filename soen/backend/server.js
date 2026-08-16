@@ -40,15 +40,25 @@ process.on('unhandledRejection', (reason, promise) => {
 /* =======================
    MIDDLEWARES
 ======================= */
+const allowedOrigins = [
+    'http://localhost:5173',
+    'http://localhost:3000',
+];
+
 app.use(cors({
-    origin: [
-        'http://localhost:5173',
-        'https://AiEngineer.surge.sh',
-        'https://aiengineer.surge.sh',
-        'https://devfusion-auto-8049.surge.sh',
-        'https://vishal-dev-fusion.surge.sh',
-        'https://dev-fusion.surge.sh'
-    ],
+    origin: function (origin, callback) {
+        // Allow requests with no origin (mobile apps, curl, etc.)
+        if (!origin) return callback(null, true);
+        // Allow any surge.sh subdomain or localhost
+        if (
+            allowedOrigins.includes(origin) ||
+            /^https?:\/\/.*\.surge\.sh$/.test(origin) ||
+            /^https?:\/\/aiengineer\.surge\.sh$/i.test(origin)
+        ) {
+            return callback(null, true);
+        }
+        return callback(new Error('Not allowed by CORS'));
+    },
     credentials: true
 }));
 
