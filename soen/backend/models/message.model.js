@@ -7,12 +7,24 @@ const messageSchema = new mongoose.Schema({
         required: true
     },
     sender: {
-        type: Object, // Stores { _id: 'ai' | userid, email: ... } directly
+        type: Object,
         required: true
     },
     message: {
-        type: String, // Storing JSON string for AI messages sometimes? No, usually text. Frontend parses it.
-        required: true
+        type: String,
+        default: ''
+    },
+    image: {
+        type: String,
+        default: null
+    },
+    deletedForEveryone: {
+        type: Boolean,
+        default: false
+    },
+    deletedFor: {
+        type: [String], // array of user IDs who deleted "for me"
+        default: []
     },
     timestamp: {
         type: Date,

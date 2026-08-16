@@ -324,7 +324,6 @@ export const searchProject = async (req, res) => {
             chats: []
         };
 
-        // 1. Search Files
         if (!type || type === 'file' || type === 'all') {
             const project = await projectModel.findById(projectId);
             if (project && project.fileTree) {
@@ -332,17 +331,9 @@ export const searchProject = async (req, res) => {
                     for (const key in tree) {
                         const currentPath = path ? `${path}/${key}` : key;
                         const item = tree[key];
-
-                        // Check if filename matches query
                         if (query && key.toLowerCase().includes(query.toLowerCase())) {
-                            results.files.push({
-                                name: key,
-                                path: currentPath,
-                                type: item.file ? 'file' : 'directory'
-                            });
+                            results.files.push({ name: key, path: currentPath, type: item.file ? 'file' : 'directory' });
                         }
-
-                        // Recursive for directories
                         if (item.directory) {
                             searchFiles(item.directory, currentPath);
                         } else if (typeof item === 'object' && !item.file && !item.contents) {
@@ -354,25 +345,16 @@ export const searchProject = async (req, res) => {
             }
         }
 
-        // 2. Search Chat
         if (!type || type === 'chat' || type === 'all') {
             let filter = { projectId };
-
-            if (query) {
-                filter.message = { $regex: query, $options: 'i' };
-            }
-
+            if (query) filter.message = { $regex: query, $options: 'i' };
             if (date) {
                 const searchDate = new Date(date);
-                const searchDateStart = new Date(searchDate.setHours(0, 0, 0, 0));
-                const searchDateEnd = new Date(searchDate.setHours(23, 59, 59, 999));
-
                 filter.timestamp = {
-                    $gte: searchDateStart,
-                    $lte: searchDateEnd
+                    $gte: new Date(searchDate.setHours(0, 0, 0, 0)),
+                    $lte: new Date(searchDate.setHours(23, 59, 59, 999))
                 };
             }
-
             const messages = await messageModel.find(filter).populate('sender', 'email').sort({ timestamp: -1 });
             results.chats = messages;
         }
@@ -382,5 +364,57 @@ export const searchProject = async (req, res) => {
     } catch (err) {
         console.log(err);
         res.status(400).json({ error: err.message });
+    }
+};
+
+// ===============================
+// DELETE MESSAGE (for me / for everyone)
+// ===============================
+export const deleteMessage = async (req, res) => {
+    try {
+        const { messageId } = req.params;
+        const { deleteType, userId } = req.body; // deleteType: 'forMe' | 'forEveryone'
+
+        if (deleteType === 'forEveryone') {
+            await messageModel.findByIdAndUpdate(messageId, { deletedForEveryone: true });
+            return res.status(200).json({ message: 'Deleted for everyone' });
+        } else {
+            await messageModel.findByIdAndUpdate(messageId, {
+                $addToSet: { deletedFor: userId }
+            });
+            return res.status(200).json({ message: 'Deleted for you' });
+        }
+    } catch (err) {
+        console.log(err);
+        return res.status(500).json({ error: err.message });
+    }
+};
+
+// ===============================
+// CLEAR ALL MESSAGES IN PROJECT
+// ===============================
+export const clearAllMessages = async (req, res) => {
+    try {
+        const { projectId } = req.params;
+        await messageModel.deleteMany({ projectId });
+        return res.status(200).json({ message: 'All messages cleared' });
+    } catch (err) {
+        console.log(err);
+        return res.status(500).json({ error: err.message });
+    }
+};
+
+// ===============================
+// GET ONLINE STATUS OF PROJECT USERS
+// ===============================
+export const getUsersOnlineStatus = async (req, res) => {
+    try {
+        const { projectId } = req.params;
+        const project = await projectModel.findById(projectId).populate('users', 'email isOnline lastSeen');
+        if (!project) return res.status(404).json({ error: 'Project not found' });
+        return res.status(200).json({ users: project.users });
+    } catch (err) {
+        console.log(err);
+        return res.status(500).json({ error: err.message });
     }
 };

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useContext, useRef } from 'react'
+import EmojiPicker from 'emoji-picker-react'
 import { UserContext } from '../context/user.context'
 import { useNavigate, useLocation } from 'react-router-dom'
 import axios from '../config/axios'
@@ -44,7 +45,12 @@ import {
     Lightbulb,
     CheckCircle,
     Sparkles,
-    Save
+    Save,
+    Smile,
+    ImagePlus,
+    Wifi,
+    WifiOff,
+    UserCheck
 } from 'lucide-react'
 import clsx from 'clsx'
 import 'highlight.js/styles/github-dark.css'
@@ -158,6 +164,18 @@ const Project = () => {
     const [message, setMessage] = useState('')
     const { user, setUser } = useContext(UserContext)
     const messageBox = React.createRef()
+
+    // Emoji & Image sharing state
+    const [showEmojiPicker, setShowEmojiPicker] = useState(false)
+    const [imagePreview, setImagePreview] = useState(null)
+    const imageInputRef = useRef(null)
+    const emojiPickerRef = useRef(null)
+
+    // Online status & delete/clear state
+    const [onlineUsers, setOnlineUsers] = useState({}) // { userId: { email, isOnline, lastSeen } }
+    const [contextMenu, setContextMenu] = useState(null) // { x, y, messageId, senderId }
+    const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false)
+    const [analyticsUsers, setAnalyticsUsers] = useState([])
 
 
 
@@ -503,8 +521,40 @@ const Project = () => {
         })
     }
 
+    const handleDeleteMessage = (messageId, deleteType) => {
+        if (deleteType === 'forMe') {
+            setMessages(prev => prev.filter(m => m._id !== messageId && m.localId !== messageId))
+            sendMessage('delete-message', { messageId, deleteType: 'forMe', userId: user._id })
+        } else {
+            setMessages(prev => prev.map(m =>
+                (m._id === messageId || m.localId === messageId)
+                    ? { ...m, deletedForEveryone: true }
+                    : m
+            ))
+            sendMessage('delete-message', { messageId, deleteType: 'forEveryone', userId: user._id })
+        }
+        setContextMenu(null)
+    }
+
+    const handleClearChats = () => {
+        if (!confirm('Clear all messages? This will delete all chat history for everyone.')) return
+        sendMessage('clear-all-chats', {})
+        setMessages([])
+        showToast('All chats cleared', 'success')
+    }
+
+    const fetchAnalytics = async () => {
+        try {
+            const res = await axios.get(`/projects/users-online-status/${project._id}`)
+            setAnalyticsUsers(res.data.users)
+            setIsAnalyticsOpen(true)
+        } catch (err) {
+            showToast('Failed to load analytics', 'error')
+        }
+    }
+
     const send = () => {
-        if (!message.trim()) return
+        if (!message.trim() && !imagePreview) return
 
         if (message.includes('@ai')) {
             setIsAiThinking(true)
@@ -515,10 +565,45 @@ const Project = () => {
         sendMessage('project-message', {
             message,
             sender: user,
-            timestamp
+            timestamp,
+            image: imagePreview || null
         })
-        setMessages(prevMessages => [...prevMessages, { sender: user, message, timestamp }])
+        setMessages(prevMessages => [...prevMessages, { sender: user, message, timestamp, image: imagePreview || null }])
         setMessage("")
+        setImagePreview(null)
+        setShowEmojiPicker(false)
+    }
+
+    const handleImageSelect = (e) => {
+        const file = e.target.files[0]
+        if (!file) return
+        if (!file.type.startsWith('image/')) {
+            showToast('Please select an image file', 'error')
+            return
+        }
+        if (file.size > 10 * 1024 * 1024) {
+            showToast('Image too large (max 10MB)', 'error')
+            return
+        }
+        const reader = new FileReader()
+        reader.onload = (ev) => {
+            // Compress image to max 800px wide, quality 0.7 — keeps socket payload small
+            const img = new Image()
+            img.onload = () => {
+                const canvas = document.createElement('canvas')
+                const MAX = 800
+                const ratio = Math.min(MAX / img.width, MAX / img.height, 1)
+                canvas.width = Math.round(img.width * ratio)
+                canvas.height = Math.round(img.height * ratio)
+                const ctx = canvas.getContext('2d')
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+                const compressed = canvas.toDataURL('image/jpeg', 0.7)
+                setImagePreview(compressed)
+            }
+            img.src = ev.target.result
+        }
+        reader.readAsDataURL(file)
+        e.target.value = ''
     }
 
 
@@ -545,10 +630,11 @@ const Project = () => {
         }
 
         receiveMessage('project-message', data => {
-            const message = data.message;
+            const message = data.message || '';
 
             // Check if message is JSON and contains fileTree
             try {
+                if (!message) throw new Error('no text, skip parse');
                 const cleanMessage = message.replace(/```json\n?|```/g, '').trim();
                 const parsedMessage = JSON.parse(cleanMessage);
 
@@ -588,6 +674,30 @@ const Project = () => {
                 setIsAiThinking(false)
             }
             setMessages(prev => [...prev, data])
+        })
+
+        // Online/Offline status
+        receiveMessage('user-status', (data) => {
+            setOnlineUsers(prev => ({
+                ...prev,
+                [data.userId]: { email: data.email, isOnline: data.isOnline, lastSeen: data.lastSeen }
+            }))
+        })
+
+        // Remote delete propagation
+        receiveMessage('delete-message', (data) => {
+            if (data.deleteType === 'forEveryone') {
+                setMessages(prev => prev.map(m =>
+                    (m._id === data.messageId)
+                        ? { ...m, deletedForEveryone: true }
+                        : m
+                ))
+            }
+        })
+
+        // Remote clear all chats
+        receiveMessage('clear-all-chats', () => {
+            setMessages([])
         })
 
         axios.get(`/projects/get-project/${location.state.project._id}`).then(res => {
@@ -958,6 +1068,22 @@ const Project = () => {
                             <Plus className="w-5 h-5" />
                         </button>
                     )}
+                    {/* Clear Chat */}
+                    <button
+                        onClick={handleClearChats}
+                        className="p-2 hover:bg-red-500/20 rounded-lg transition-colors text-slate-400 hover:text-red-400"
+                        title="Clear All Chats"
+                    >
+                        <Trash2 className="w-5 h-5" />
+                    </button>
+                    {/* Analytics */}
+                    <button
+                        onClick={fetchAnalytics}
+                        className="p-2 hover:bg-slate-800 rounded-lg transition-colors text-slate-400 hover:text-emerald-400"
+                        title="Online Analytics"
+                    >
+                        <UserCheck className="w-5 h-5" />
+                    </button>
                 </header>
 
                 <SearchModal
@@ -993,18 +1119,31 @@ const Project = () => {
                         ref={messageBox}
                         className="message-box flex-grow flex flex-col gap-4 p-6 overflow-auto"
                     >
-                        {messages.map((msg, index) => (
+                        {messages
+                            .filter(msg => !msg.deletedForEveryone && !(msg.deletedFor || []).includes(user._id?.toString()))
+                            .map((msg, index) => (
                             <motion.div
                                 initial={{ opacity: 0, y: 10 }}
                                 animate={{ opacity: 1, y: 0 }}
-                                key={index}
+                                key={msg._id || index}
                                 id={`message-${msg._id}`}
                                 className={clsx(
-                                    "flex flex-col max-w-[85%] transition-colors duration-500 rounded-lg p-1", // Added transition and padding for highlight effect
+                                    "flex flex-col max-w-[85%] transition-colors duration-500 rounded-lg p-1 group relative",
                                     msg.sender._id == user._id.toString() ? "self-end items-end" : "self-start items-start"
                                 )}
+                                onContextMenu={(e) => {
+                                    e.preventDefault()
+                                    setContextMenu({ x: e.clientX, y: e.clientY, messageId: msg._id, senderId: msg.sender._id })
+                                }}
                             >
-                                <div className="flex items-baseline gap-2 mb-1 px-1 opacity-70">
+                                <div className="flex items-center gap-2 mb-1 px-1 opacity-70">
+                                    {/* Green online dot */}
+                                    {msg.sender._id !== 'ai' && (
+                                        <span className={clsx(
+                                            'w-2 h-2 rounded-full shrink-0',
+                                            onlineUsers[msg.sender._id]?.isOnline ? 'bg-emerald-400' : 'bg-slate-600'
+                                        )} />
+                                    )}
                                     <span className="text-xs font-medium opacity-75">
                                         {msg.sender.email.split('@')[0]}
                                     </span>
@@ -1019,12 +1158,22 @@ const Project = () => {
                                     msg.sender._id == user._id.toString()
                                         ? "bg-blue-600 text-white border-blue-500 rounded-tr-sm"
                                         : themeClasses.chatBubbleOther + " rounded-tl-sm",
-                                    msg.sender._id === 'ai' && "w-full max-w-full !p-0 !bg-transparent !border-none !shadow-none" // AI message handles its own styles
+                                    msg.sender._id === 'ai' && "w-full max-w-full !p-0 !bg-transparent !border-none !shadow-none"
                                 )}>
                                     {msg.sender._id === 'ai' ? (
                                         <AiMessage message={msg.message} />
                                     ) : (
-                                        <p>{msg.message}</p>
+                                        <>
+                                            {msg.image && (
+                                                <img
+                                                    src={msg.image}
+                                                    alt="shared"
+                                                    className="max-w-[220px] max-h-[220px] rounded-xl object-cover mb-1 cursor-pointer hover:opacity-90 transition-opacity"
+                                                    onClick={() => window.open(msg.image, '_blank')}
+                                                />
+                                            )}
+                                            {msg.message && <p>{msg.message}</p>}
+                                        </>
                                     )}
                                 </div>
                             </motion.div>
@@ -1042,23 +1191,108 @@ const Project = () => {
                     </div>
 
                     {/* Input Area */}
-                    <div className={clsx("inputField flex items-center p-4 border-t gap-3", themeClasses.panel, themeClasses.border)}>
-                        <input
-                            value={message}
-                            onChange={(e) => setMessage(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && send()}
-                            className={clsx('flex-grow rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all shadow-sm', themeClasses.input)}
-                            type="text"
-                            placeholder='Ask AI to edit code...'
-                        />
-                        <motion.button
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.95 }}
-                            onClick={send}
-                            className='w-11 h-11 flex items-center justify-center bg-blue-600 text-white rounded-xl shadow-lg shadow-blue-600/20 hover:bg-blue-500 transition-colors'
-                        >
-                            <Send className="w-5 h-5 ml-0.5" />
-                        </motion.button>
+                    <div className={clsx("inputField flex flex-col border-t", themeClasses.panel, themeClasses.border)}>
+
+                        {/* Image Preview Strip */}
+                        {imagePreview && (
+                            <div className="flex items-center gap-2 px-4 pt-3">
+                                <div className="relative inline-block">
+                                    <img
+                                        src={imagePreview}
+                                        alt="preview"
+                                        className="h-16 w-16 object-cover rounded-lg border border-slate-700"
+                                    />
+                                    <button
+                                        onClick={() => setImagePreview(null)}
+                                        className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 hover:bg-red-400 text-white rounded-full flex items-center justify-center shadow-md transition-colors"
+                                    >
+                                        <X className="w-3 h-3" />
+                                    </button>
+                                </div>
+                                <span className="text-xs text-slate-400">Image ready to send</span>
+                            </div>
+                        )}
+
+                        {/* Emoji Picker Popup */}
+                        {showEmojiPicker && (
+                            <div
+                                ref={emojiPickerRef}
+                                className="absolute bottom-20 left-4 z-50 shadow-2xl rounded-2xl overflow-hidden"
+                            >
+                                <EmojiPicker
+                                    onEmojiClick={(emojiData) => {
+                                        setMessage(prev => prev + emojiData.emoji)
+                                    }}
+                                    theme="dark"
+                                    height={380}
+                                    width={320}
+                                    searchPlaceholder="Search emoji..."
+                                    previewConfig={{ showPreview: false }}
+                                />
+                            </div>
+                        )}
+
+                        {/* Input Row */}
+                        <div className="flex items-center p-3 gap-2">
+                            {/* Hidden file input */}
+                            <input
+                                ref={imageInputRef}
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={handleImageSelect}
+                            />
+
+                            {/* Emoji Button */}
+                            <motion.button
+                                whileHover={{ scale: 1.1 }}
+                                whileTap={{ scale: 0.9 }}
+                                onClick={() => setShowEmojiPicker(prev => !prev)}
+                                className={clsx(
+                                    'w-9 h-9 flex items-center justify-center rounded-xl transition-colors shrink-0',
+                                    showEmojiPicker
+                                        ? 'bg-yellow-500/20 text-yellow-400'
+                                        : 'text-slate-400 hover:text-yellow-400 hover:bg-slate-800'
+                                )}
+                                title="Emoji"
+                            >
+                                <Smile className="w-5 h-5" />
+                            </motion.button>
+
+                            {/* Image Upload Button */}
+                            <motion.button
+                                whileHover={{ scale: 1.1 }}
+                                whileTap={{ scale: 0.9 }}
+                                onClick={() => imageInputRef.current?.click()}
+                                className={clsx(
+                                    'w-9 h-9 flex items-center justify-center rounded-xl transition-colors shrink-0',
+                                    imagePreview
+                                        ? 'bg-blue-500/20 text-blue-400'
+                                        : 'text-slate-400 hover:text-blue-400 hover:bg-slate-800'
+                                )}
+                                title="Share Image"
+                            >
+                                <ImagePlus className="w-5 h-5" />
+                            </motion.button>
+
+                            <input
+                                value={message}
+                                onChange={(e) => setMessage(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && send()}
+                                onFocus={() => setShowEmojiPicker(false)}
+                                className={clsx('flex-grow rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all shadow-sm', themeClasses.input)}
+                                type="text"
+                                placeholder='Ask AI to edit code...'
+                            />
+                            <motion.button
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
+                                onClick={send}
+                                className='w-10 h-10 flex items-center justify-center bg-blue-600 text-white rounded-xl shadow-lg shadow-blue-600/20 hover:bg-blue-500 transition-colors shrink-0'
+                            >
+                                <Send className="w-4 h-4 ml-0.5" />
+                            </motion.button>
+                        </div>
                     </div>
                 </div>
 
@@ -2041,6 +2275,112 @@ const Project = () => {
                                 </div>
                             )}
 
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* RIGHT-CLICK CONTEXT MENU */}
+            {contextMenu && (
+                <div
+                    className="fixed z-[200] bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden"
+                    style={{ top: contextMenu.y, left: contextMenu.x }}
+                    onMouseLeave={() => setContextMenu(null)}
+                >
+                    <button
+                        onClick={() => handleDeleteMessage(contextMenu.messageId, 'forMe')}
+                        className="flex items-center gap-3 px-4 py-3 text-sm text-slate-300 hover:bg-slate-800 w-full text-left transition-colors"
+                    >
+                        <Trash2 className="w-4 h-4 text-slate-400" />
+                        Delete for Me
+                    </button>
+                    {contextMenu.senderId === user._id?.toString() && (
+                        <button
+                            onClick={() => handleDeleteMessage(contextMenu.messageId, 'forEveryone')}
+                            className="flex items-center gap-3 px-4 py-3 text-sm text-red-400 hover:bg-red-500/10 w-full text-left transition-colors border-t border-slate-800"
+                        >
+                            <Trash2 className="w-4 h-4" />
+                            Delete for Everyone
+                        </button>
+                    )}
+                    <button
+                        onClick={() => setContextMenu(null)}
+                        className="flex items-center gap-3 px-4 py-2 text-xs text-slate-500 hover:bg-slate-800 w-full text-left transition-colors border-t border-slate-800"
+                    >
+                        <X className="w-3 h-3" /> Cancel
+                    </button>
+                </div>
+            )}
+
+            {/* ANALYTICS MODAL — Online/Offline */}
+            <AnimatePresence>
+                {isAnalyticsOpen && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[70]"
+                        onClick={() => setIsAnalyticsOpen(false)}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            className="bg-slate-900 border border-slate-700 p-6 rounded-2xl w-[420px] shadow-2xl"
+                            onClick={e => e.stopPropagation()}
+                        >
+                            <header className="flex justify-between items-center mb-5 border-b border-slate-800 pb-4">
+                                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                                    <UserCheck className="w-5 h-5 text-emerald-400" />
+                                    Team Online Status
+                                </h2>
+                                <button onClick={() => setIsAnalyticsOpen(false)} className="p-2 hover:bg-slate-800 rounded-full transition-colors">
+                                    <X className="w-5 h-5 text-slate-400" />
+                                </button>
+                            </header>
+
+                            <div className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto">
+                                {analyticsUsers.length === 0 ? (
+                                    <p className="text-slate-400 text-sm text-center py-6">No users found</p>
+                                ) : analyticsUsers.map(u => (
+                                    <div key={u._id} className="flex items-center justify-between p-3 rounded-xl bg-slate-800/50 border border-slate-700/50">
+                                        <div className="flex items-center gap-3">
+                                            <div className="relative">
+                                                <div className="w-9 h-9 rounded-full bg-slate-700 flex items-center justify-center text-sm font-bold text-white">
+                                                    {u.email[0].toUpperCase()}
+                                                </div>
+                                                <span className={clsx(
+                                                    'absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-slate-900',
+                                                    u.isOnline ? 'bg-emerald-400' : 'bg-slate-500'
+                                                )} />
+                                            </div>
+                                            <div>
+                                                <p className="text-sm font-medium text-white">{u.email}</p>
+                                                <p className="text-xs text-slate-400">
+                                                    {u.isOnline ? (
+                                                        <span className="text-emerald-400 font-medium">● Online Now</span>
+                                                    ) : u.lastSeen ? (
+                                                        `Last seen: ${new Date(u.lastSeen).toLocaleString()}`
+                                                    ) : 'Never connected'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <span className={clsx(
+                                            'px-2 py-1 rounded-full text-xs font-semibold',
+                                            u.isOnline ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-700 text-slate-400'
+                                        )}>
+                                            {u.isOnline ? 'Online' : 'Offline'}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <button
+                                onClick={fetchAnalytics}
+                                className="mt-4 w-full py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-sm font-medium transition-colors flex items-center justify-center gap-2"
+                            >
+                                <Wifi className="w-4 h-4" /> Refresh Status
+                            </button>
                         </motion.div>
                     </motion.div>
                 )}

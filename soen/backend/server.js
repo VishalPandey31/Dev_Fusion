@@ -18,6 +18,7 @@ import adminRoutes from './routes/admin.routes.js';
 import projectModel from './models/project.model.js';
 import messageModel from './models/message.model.js';
 import sessionModel from './models/session.model.js';
+import userModel from './models/user.model.js';
 import { generateResult } from './services/ai.service.js';
 
 const app = express();
@@ -123,7 +124,8 @@ const io = new Server(server, {
     cors: {
         origin: '*',
         methods: ['GET', 'POST']
-    }
+    },
+    maxHttpBufferSize: 5e6 // 5MB — needed for compressed base64 image payloads
 });
 
 /* =======================
@@ -168,6 +170,21 @@ io.on('connection', async (socket) => {
     const roomId = socket.project._id.toString();
     socket.join(roomId);
 
+    // Mark user online & broadcast status
+    try {
+        const userId = socket.user._id || socket.user.id;
+        await userModel.findByIdAndUpdate(userId, { isOnline: true });
+        const onlineUser = await userModel.findById(userId).select('email isOnline lastSeen');
+        socket.broadcast.to(roomId).emit('user-status', {
+            userId: userId.toString(),
+            email: onlineUser?.email,
+            isOnline: true,
+            lastSeen: null
+        });
+    } catch (err) {
+        console.error('Online status update failed:', err.message);
+    }
+
     let sessionId = null;
 
     // START SESSION
@@ -193,6 +210,7 @@ io.on('connection', async (socket) => {
                 projectId: socket.project._id,
                 sender: data.sender,
                 message,
+                image: data.image || null,
                 timestamp: data.timestamp || new Date()
             });
         } catch (err) {
@@ -245,9 +263,53 @@ io.on('connection', async (socket) => {
         }
     });
 
+    // ---- DELETE MESSAGE ----
+    socket.on('delete-message', async (data) => {
+        // data: { messageId, deleteType: 'forMe'|'forEveryone', userId }
+        try {
+            if (data.deleteType === 'forEveryone') {
+                await messageModel.findByIdAndUpdate(data.messageId, { deletedForEveryone: true });
+                socket.broadcast.to(roomId).emit('delete-message', {
+                    messageId: data.messageId,
+                    deleteType: 'forEveryone'
+                });
+            } else {
+                await messageModel.findByIdAndUpdate(data.messageId, {
+                    $addToSet: { deletedFor: data.userId }
+                });
+            }
+        } catch (err) {
+            console.error('Delete message failed:', err.message);
+        }
+    });
+
+    // ---- CLEAR ALL CHATS ----
+    socket.on('clear-all-chats', async () => {
+        try {
+            await messageModel.deleteMany({ projectId: socket.project._id });
+            socket.broadcast.to(roomId).emit('clear-all-chats');
+        } catch (err) {
+            console.error('Clear chats failed:', err.message);
+        }
+    });
+
     socket.on('disconnect', async () => {
         console.log('User disconnected');
         socket.leave(roomId);
+
+        // Mark user offline & broadcast
+        try {
+            const userId = socket.user._id || socket.user.id;
+            const now = new Date();
+            await userModel.findByIdAndUpdate(userId, { isOnline: false, lastSeen: now });
+            socket.broadcast.to(roomId).emit('user-status', {
+                userId: userId.toString(),
+                isOnline: false,
+                lastSeen: now
+            });
+        } catch (err) {
+            console.error('Offline status update failed:', err.message);
+        }
 
         // END SESSION
         if (sessionId) {

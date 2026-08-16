@@ -103,4 +103,23 @@ router.get(
     projectController.searchProject
 );
 
+router.delete(
+    '/delete-message/:messageId',
+    authMiddleWare.authUser,
+    body('deleteType').isIn(['forMe', 'forEveryone']),
+    projectController.deleteMessage
+);
+
+router.delete(
+    '/clear-messages/:projectId',
+    authMiddleWare.authUser,
+    projectController.clearAllMessages
+);
+
+router.get(
+    '/users-online-status/:projectId',
+    authMiddleWare.authUser,
+    projectController.getUsersOnlineStatus
+);
+
 export default router;

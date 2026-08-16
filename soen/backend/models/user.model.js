@@ -44,8 +44,16 @@ const userSchema = new mongoose.Schema({
     },
     preferences: {
         preferredStack: { type: String, default: 'React/Node' },
-        codeStyle: { type: String, default: 'Standard' }, // e.g. 'Standard', 'Concise', 'Detailed'
-        language: { type: String, default: 'English' } // 'English', 'Hinglish'
+        codeStyle: { type: String, default: 'Standard' },
+        language: { type: String, default: 'English' }
+    },
+    isOnline: {
+        type: Boolean,
+        default: false
+    },
+    lastSeen: {
+        type: Date,
+        default: null
     }
 })
 
