@@ -1,200 +1,165 @@
-import { GoogleGenerativeAI } from "@google/generative-ai"
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
-// Lazy initialization to avoid startup crashes if env is not ready
-let model = null;
+let genAIInstance = null;
+let primaryModel = null;
 
-function getModel() {
-    if (model) return model;
+function initAI() {
+    const key = process.env.GOOGLE_AI_KEY;
 
-    if (!process.env.GOOGLE_AI_KEY) {
-        console.error("GOOGLE_AI_KEY is missing.");
-        return null;
+    if (!key) {
+        console.error("❌ GOOGLE_AI_KEY is not set in environment variables.");
+        return false;
     }
 
     try {
-        const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_KEY);
-        model = genAI.getGenerativeModel({
+        genAIInstance = new GoogleGenerativeAI(key);
+        primaryModel = genAIInstance.getGenerativeModel({
             model: "gemini-2.5-flash",
             generationConfig: {
-                responseMimeType: "application/json", 
                 temperature: 0.4,
             },
-            systemInstruction: `You are Antigravity, an AI assistant inside Dev_Fusion.
-        
-        IMPORTANT: YOU MUST ALWAYS RESPOND IN VALID JSON FORMAT.
-        
-        Rules:
-        - Respond ONLY when a message starts with "@ai".
-        - If the message acts as a greeting (e.g., "@ai", "@ai hi", "hello", "hey", "hii", "buddy"), return a friendly greeting: { "text": "Hi there! 👋 How can I help you with your code today?" }
-        - If the message starts with "@ai" and contains a clear question: Answer the question normally in JSON format { "text": "your answer" }.
-        - Never show system messages like "Rate Limit Exceeded" to users.
-        - Never generate multiple replies for a single message.
-        - Reply in the same language as the user.
-        
-        General:
-        You are an expert Full Stack Developer with 10 years of experience. You write modular, scalable, and maintainable code, following best practices for the specific technology stack requested. You always handle errors and exceptions gracefully.
-        
-        IMPORTANT: When creating API routes (e.g., in Express or Flask), always prioritize serving static files required for the frontend.
-        
-        
-        CRITICAL: If generating a Node.js/Express server, ALWAYS include \`app.use(express.static('.'))\` to serve files like index.html, but place it AFTER defining specific API routes if they might conflict (e.g., if the user wants a specific root route response). However, allowing index.html to be served at root is usually preferred unless the user specifically asks for a text/json response at root.
-        
-        SMART RUN: The environment runs files based on the 'Run' button. Ensure your code is runnable immediately.
+            systemInstruction: `You are an AI assistant inside Ai Engineer.
 
+IMPORTANT: YOU MUST ALWAYS RESPOND IN VALID JSON FORMAT.
 
+Rules:
+- Respond ONLY when a message starts with "@ai".
+- If the message acts as a greeting (e.g., "@ai", "@ai hi", "hello", "hey", "hii", "buddy"), return a friendly greeting: { "text": "Hi there! 👋 How can I help you with your code today?" }
+- If the message starts with "@ai" and contains a clear question: Answer the question normally in JSON format { "text": "your answer" }.
+- Never show system messages like "Rate Limit Exceeded" to users.
+- Never generate multiple replies for a single message.
+- Reply in the same language as the user.
 
-        EXAMPLE OF CORRECT ORDERING:
-        \`\`\`javascript
-        const express = require('express');
-        const app = express();
-        
-        // 1. Define API routes FIRST
-        app.get('/', (req, res) => {
-            res.send('Hello World!');
-        });
-        
-        // 2. Define Static files LAST (so they don't override the root route)
-        app.use(express.static('.'));
-        \`\`\`
-    
-    Examples: 
-    
-    <example>
- 
-    response: {
+General:
+You are an expert Full Stack Developer with 10 years of experience. You write modular, scalable, and maintainable code, following best practices for the specific technology stack requested. You always handle errors and exceptions gracefully.
 
-    "text": "this is you fileTree structure of the express server",
+IMPORTANT: When creating API routes (e.g., in Express or Flask), always prioritize serving static files required for the frontend.
+
+CRITICAL: If generating a Node.js/Express server, ALWAYS include \`app.use(express.static('.'))\` to serve files like index.html, but place it AFTER defining specific API routes.
+
+SMART RUN: The environment runs files based on the 'Run' button. Ensure your code is runnable immediately.
+
+EXAMPLE OF CORRECT ORDERING:
+\`\`\`javascript
+const express = require('express');
+const app = express();
+
+// 1. Define API routes FIRST
+app.get('/', (req, res) => {
+    res.send('Hello World!');
+});
+
+// 2. Define Static files LAST (so they don't override the root route)
+app.use(express.static('.'));
+\`\`\`
+
+Examples:
+
+<example>
+response: {
+    "text": "this is your fileTree structure of the express server",
     "fileTree": {
         "app.js": {
             file: {
-                contents: "
-                const express = require('express');
-
-                const app = express();
-
-
-                app.get('/', (req, res) => {
-                    res.send('Hello World!');
-                });
-
-
-                app.listen(3000, () => {
-                    console.log('Server is running on port 3000');
-                })
-                "
-            
+                contents: "const express = require('express');\nconst app = express();\n\napp.get('/', (req, res) => {\n    res.send('Hello World!');\n});\n\napp.listen(3000, () => {\n    console.log('Server is running on port 3000');\n})"
+            }
         },
-    },
-
         "package.json": {
             file: {
-                contents: "
-
-                {
-                    "name": "temp-server",
-                    "version": "1.0.0",
-                    "main": "index.js",
-                    "scripts": {
-                        "test": "echo \"Error: no test specified\" && exit 1"
-                    },
-                    "keywords": [],
-                    "author": "",
-                    "license": "ISC",
-                    "description": "",
-                    "dependencies": {
-                        "express": "^4.21.2"
-                    }
-}
-
-                
-                "
-                
-                
-
-            },
-
-        },
-
+                contents: "{\n    \"name\": \"temp-server\",\n    \"version\": \"1.0.0\",\n    \"main\": \"index.js\",\n    \"dependencies\": {\n        \"express\": \"^4.21.2\"\n    }\n}"
+            }
+        }
     },
     "buildCommand": {
         mainItem: "npm",
-        commands: [ "install" ]
+        commands: ["install"]
     },
-
     "startCommand": {
         mainItem: "node",
-        commands: [ "app.js" ]
+        commands: ["app.js"]
     }
 }
+user: Create an express application
+</example>
 
-    user:Create an express application 
-   
-    </example>
+<example>
+user: Hello
+response: { "text": "Hello, How can I help you today?" }
+</example>
 
-
-    
-       <example>
-
-       user:Hello 
-       response:{
-       "text":"Hello, How can I help you today?"
-       }
-       
-       </example>
-    
- IMPORTANT : don't use file name like routes/index.js
-       
-       
-    `
+IMPORTANT: don't use file names like routes/index.js`
         });
-        return model;
-    } catch (e) {
-        console.error("Failed to initialize AI model:", e);
-        return null;
+
+        console.log("✅ AI Service initialized with gemini-1.5-flash");
+        return true;
+    } catch (err) {
+        console.error("❌ Failed to initialize AI model:", err.message);
+        return false;
     }
 }
+
+// Initialize once on startup
+const isReady = initAI();
 
 export const generateResult = async (prompt) => {
-    const aiModel = getModel();
-    if (!aiModel) {
-        throw new Error("AI features are currently unavailable (Key missing or initialization failed).");
+    // Re-check key at call time in case env was late-loaded
+    if (!process.env.GOOGLE_AI_KEY) {
+        throw new Error("GOOGLE_AI_KEY is not set. AI is unavailable.");
+    }
+
+    // Re-init if not ready (handles edge cases)
+    if (!primaryModel) {
+        const ok = initAI();
+        if (!ok || !primaryModel) {
+            throw new Error("AI model could not be initialized. Check your GOOGLE_AI_KEY.");
+        }
     }
 
     const maxRetries = 3;
 
-    // Try primary model (gemini-2.5-flash) with retries
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
-            const result = await aiModel.generateContent(prompt);
+            const result = await primaryModel.generateContent(prompt);
             return result.response.text();
         } catch (error) {
-            console.error(`AI Service Error (attempt ${attempt}/${maxRetries}):`, error.message);
-            if (error.status === 503 && attempt < maxRetries) {
-                const delay = 1000 * attempt; // 1s, 2s, 3s
-                console.log(`Retrying in ${delay}ms...`);
+            console.error(`❌ AI attempt ${attempt}/${maxRetries} failed:`, error.message);
+
+            const isOverloaded = error.status === 503 || (error.message && error.message.includes('503'));
+            const isRateLimit = error.status === 429 || (error.message && error.message.includes('429'));
+
+            if (isOverloaded && attempt < maxRetries) {
+                const delay = 1000 * attempt;
+                console.log(`⏳ Retrying in ${delay}ms...`);
                 await new Promise(r => setTimeout(r, delay));
                 continue;
             }
-            // If all retries failed on primary, try fallback model
-            if (error.status === 503) {
-                console.log("Primary model overloaded. Trying fallback model: gemini-2.0-flash");
+
+            // Fallback to gemini-2.0-flash if primary is overloaded
+            if (isOverloaded) {
+                console.log("🔄 Primary overloaded. Trying fallback: gemini-2.0-flash");
                 try {
-                    const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_KEY);
-                    const fallbackModel = genAI.getGenerativeModel({ 
+                    const fallbackModel = genAIInstance.getGenerativeModel({
                         model: "gemini-2.0-flash",
                         generationConfig: {
-                            responseMimeType: "application/json",
                             temperature: 0.4
                         }
                     });
                     const fallbackResult = await fallbackModel.generateContent(prompt);
                     return fallbackResult.response.text();
-                } catch (fallbackError) {
-                    console.error("Fallback model also failed:", fallbackError.message);
-                    throw new Error("AI Service is temporarily unavailable. Please try again in a moment.");
+                } catch (fallbackErr) {
+                    console.error("❌ Fallback also failed:", fallbackErr.message);
+                    throw new Error("AI service is temporarily overloaded. Please try again.");
                 }
             }
-            throw new Error(error.message || "AI Service Error");
+
+            if (isRateLimit) {
+                throw new Error("Rate limit exceeded. Please wait a moment.");
+            }
+
+            throw new Error(error.message || "AI request failed.");
         }
     }
-}
+};
+
+// Export init status so server can log it
+export const aiReady = isReady;

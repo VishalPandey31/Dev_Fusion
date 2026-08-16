@@ -925,7 +925,7 @@ const Project = () => {
                             <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/20 group-hover:scale-105 transition-transform">
                                 <Code className="w-5 h-5 text-white" />
                             </div>
-                            <h1 className="font-bold text-lg tracking-tight bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent group-hover:text-white transition-colors">Dev_Fusion</h1>
+                            <h1 className="font-bold text-lg tracking-tight bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent group-hover:text-white transition-colors">Ai Engineer</h1>
                         </button>
                     </div>
                     <button

@@ -25,7 +25,7 @@ Write-Host "✅ Build verified & SPA fallback(200.html) created." -ForegroundCol
 
 # 5. Generate Random Domain
 $randomId = Get-Random -Minimum 1000 -Maximum 9999
-$domain = "devfusion-auto-$randomId.surge.sh"
+$domain = "aiengineer-auto-$randomId.surge.sh"
 
 # 6. Deploy to Surge
 Write-Host "☁️ Deploying to Surge ($domain)..." -ForegroundColor Cyan

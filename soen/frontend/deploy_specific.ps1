@@ -21,7 +21,7 @@ Write-Host "Creating 200.html..." -ForegroundColor Yellow
 Copy-Item "dist\index.html" -Destination "dist\200.html" -Force
 
 # 5. Deploy
-$domain = "devfusion-auto-8049.surge.sh"
+$domain = "AiEngineer.surge.sh"
 Write-Host "Deploying to $domain..." -ForegroundColor Cyan
 
 cmd /c "npx surge ./dist --domain $domain"

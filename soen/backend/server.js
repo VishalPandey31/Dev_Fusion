@@ -1,4 +1,4 @@
-import 'dotenv/config.js';
+import 'dotenv/config';
 import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
@@ -99,6 +99,19 @@ app.get('/test-db', (req, res) => {
         host: mongoose.connection.host,
         dbName: mongoose.connection.name
     });
+});
+
+app.get('/test-ai', async (req, res) => {
+    try {
+        const keyPresent = !!process.env.GOOGLE_AI_KEY;
+        const keyPreview = keyPresent ? process.env.GOOGLE_AI_KEY.slice(0, 10) + '...' : 'NOT SET';
+        const result = await generateResult('@ai hi');
+        res.json({ status: '✅ AI Working', keyPresent, keyPreview, sampleResponse: result.slice(0, 100) });
+    } catch (err) {
+        const keyPresent = !!process.env.GOOGLE_AI_KEY;
+        const keyPreview = keyPresent ? process.env.GOOGLE_AI_KEY.slice(0, 10) + '...' : 'NOT SET';
+        res.status(500).json({ status: '❌ AI Failed', error: err.message, keyPresent, keyPreview });
+    }
 });
 
 /* =======================
@@ -216,8 +229,15 @@ io.on('connection', async (socket) => {
             } catch (error) {
                 console.error('❌ AI Error in socket handler:', error.message);
                 console.error(error.stack);
+                const errMsg = error.message?.includes('GOOGLE_AI_KEY')
+                    ? 'AI is not configured. (Missing API Key)'
+                    : error.message?.includes('Rate limit')
+                        ? 'Too many requests. Please wait a moment.'
+                        : error.message?.includes('overloaded')
+                            ? 'AI is busy. Please try again in a moment.'
+                            : 'AI request failed: ' + (error.message || 'Unknown error');
                 io.to(roomId).emit('project-message', {
-                    message: 'AI is currently unavailable.',
+                    message: errMsg,
                     sender: { _id: 'ai', email: 'AI' },
                     timestamp: new Date()
                 });
